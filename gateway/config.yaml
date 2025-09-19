@@ -1,0 +1,58 @@
+# Gateway Configuration
+server:
+  http:
+    host: "0.0.0.0"
+    port: "8080"
+    read_timeout: "30s"
+    write_timeout: "30s"
+    idle_timeout: "60s"
+  
+  grpc:
+    host: "0.0.0.0"
+    port: "9090"
+    max_concurrent_streams: 100
+    max_connection_idle: "30s"
+    max_connection_age: "60s"
+    max_connection_age_grace: "10s"
+    time: "5s"
+    timeout: "1s"
+
+service:
+  otlp:
+    max_log_size: 1048576      # 1MB
+    max_batch_size: 1000       # 1000 logs per batch
+    max_labels: 100            # 100 labels per log
+    max_fields: 200            # 200 fields per log
+    request_timeout: 30        # 30s timeout
+    validate_utf8: true        # Validate UTF-8
+    allowed_schemas: ["JSON", "LOGFMT", "TEXT"]
+  
+  emitter:
+    output_type: "forwarder"   # stdout, kafka, grpc, forwarder
+    batch_size: 100            # Batch size for output
+    flush_interval: 5          # Flush interval in seconds
+    
+    forwarder:
+      shadow_mode: true        # Enable shadow mode (no drops)
+      max_retries: 3           # Max retry attempts
+      retry_delay: 1           # 1s delay between retries
+      timeout: 10              # 10s request timeout
+      batch_size: 100          # Batch size for forwarding
+      flush_interval: 5        # 5s flush interval
+      max_queue_size: 10000    # Max queue size
+      
+      miner:
+        enabled: true
+        endpoint: "http://localhost:8001/api/v1/logs"
+        timeout: 5             # 5s timeout
+      
+      loki:
+        enabled: true
+        endpoint: "http://localhost:3100/loki/api/v1/push"
+        timeout: 5             # 5s timeout
+        tenant_id: ""          # Optional tenant ID
+
+metrics:
+  enabled: true
+  port: "9090"
+  path: "/metrics"

@@ -1,0 +1,23 @@
+<!-- Scroll to top button -->
+<button class="scroll-top" onclick="scrollToTop()" title="Scroll to top">
+  <i class="fa fa-arrow-up"></i>
+</button>
+
+<script>
+function scrollToTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth'
+  });
+}
+
+// Show/hide scroll to top button
+window.addEventListener('scroll', function() {
+  var scrollTop = document.querySelector('.scroll-top');
+  if (window.pageYOffset > 300) {
+    scrollTop.style.display = 'block';
+  } else {
+    scrollTop.style.display = 'none';
+  }
+});
+</script>

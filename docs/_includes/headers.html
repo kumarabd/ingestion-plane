@@ -1,0 +1,11 @@
+<!-- Headers for permalinks -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  var headers = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  headers.forEach(function(header) {
+    if (header.id) {
+      header.innerHTML = '<a href="#' + header.id + '" class="header-link">' + header.innerHTML + '</a>';
+    }
+  });
+});
+</script>

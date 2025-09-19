@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/kumarabd/ingestion-plane/contracts/common/v1;commonv1";
+
+// ----- Enums used across domains -----
+
+// Source schema of the incoming payload after detection.
+enum Schema {
+  SCHEMA_UNSPECIFIED = 0;
+  SCHEMA_JSON        = 1;
+  SCHEMA_LOGFMT      = 2;
+  SCHEMA_TEXT        = 3;
+}
+
+// Normalized severity. Keep mapping small; do not mirror every library level.
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_DEBUG       = 1;
+  SEVERITY_INFO        = 2;
+  SEVERITY_WARN        = 3;
+  SEVERITY_ERROR       = 4;
+  SEVERITY_FATAL       = 5;
+}
+
+// Sampler decision: keep or suppress.
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  ACTION_KEEP        = 1;
+  ACTION_SUPPRESS    = 2;
+}
+
+// Reason ladder for why a line was kept (first-match-wins policy).
+enum KeepReason {
+  KEEP_REASON_UNSPECIFIED = 0;
+  KEEP_REASON_SEVERITY    = 1;  // error/fatal floor
+  KEEP_REASON_NOVEL       = 2;  // new template within novelty window
+  KEEP_REASON_SPIKE       = 3;  // spike-aware relaxation
+  KEEP_REASON_WARMUP      = 4;  // first N
+  KEEP_REASON_LOG2        = 5;  // 1,2,4,8,16...
+  KEEP_REASON_STEADYK     = 6;  // every Kth
+  KEEP_REASON_BUDGET      = 7;  // budget guard adjustment
+}
+
+// Template event type for the index-feed.
+enum TemplateEventType {
+  TEMPLATE_EVENT_TYPE_UNSPECIFIED = 0;
+  TEMPLATE_NEW                    = 1;
+  TEMPLATE_UPDATE                 = 2;
+  TEMPLATE_SPIKE                  = 3;
+}
+
+// Small helper for bounded exemplars.
+message Exemplar {
+  string message   = 1;  // masked/redacted exemplar text
+  string pod       = 2;  // optional
+  string namespace = 3;  // optional
+  string node      = 4;  // optional
+  string stream    = 5;  // optional (stdout/stderr)
+}
+
+// Generic time windows counters used in several APIs.
+message WindowCounts {
+  uint64 count_10m = 1;
+  uint64 count_1h  = 2;
+  uint64 count_24h = 3;
+}

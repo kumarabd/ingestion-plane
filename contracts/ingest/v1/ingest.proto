@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package ingest.v1;
+
+option go_package = "github.com/kumarabd/ingestion-plane/contracts/ingest/v1;ingestv1";
+
+import "google/protobuf/timestamp.proto";
+import "common/v1/common.proto";
+
+// Normalized log record emitted by the Pre-Normalizer + PII Redactor.
+message NormalizedLog {
+  google.protobuf.Timestamp timestamp = 1;
+
+  // Canonical labels to keep cardinality sane; include tenant/service/env/severity.
+  map<string, string> labels = 2;
+
+  // Canonicalized, redacted message string (what miners see).
+  string message = 3;
+
+  // Optional structured fields promoted from json/logfmt (bounded, small).
+  map<string, string> fields = 4;
+
+  // Source schema classification for this line.
+  common.v1.Schema schema = 5;
+
+  // Normalized severity (also present in labels).
+  common.v1.Severity severity = 6;
+
+  // True if UTF-8 fixups / sanitization occurred.
+  bool sanitized = 7;
+
+  // Original payload length before truncation.
+  uint32 original_length = 8;
+
+  // Truncation flag applied during bounds enforcement.
+  bool truncated = 9;
+
+  // PII redaction report.
+  RedactionReport redaction = 10;
+
+  // Opaque correlation id for tracing across services (optional).
+  string correlation_id = 11;
+}
+
+// Redaction metadata for auditing.
+message RedactionReport {
+  bool applied = 1;
+  repeated string rules = 2; // e.g., ["pii.email","pii.ipv4"]
+  uint32 count = 3;          // number of replacements performed
+}
+
+// Batch wrapper for efficient ingestion.
+message NormalizedLogBatch {
+  repeated NormalizedLog records = 1;
+}
+
+// Simple acknowledgement.
+message Ack {
+  string message = 1;
+}
+
+// Ingest RPC used by shippers or edge agents.
+service IngestService {
+  rpc Push (NormalizedLogBatch) returns (Ack);
+}

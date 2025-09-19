@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package miner.v1;
+
+option go_package = "github.com/kumarabd/ingestion-plane/contracts/miner/v1;minerv1";
+
+import "google/protobuf/timestamp.proto";
+import "ingest/v1/ingest.proto";
+
+// Request to analyze normalized logs (usually batched).
+message AnalyzeRequest {
+  repeated ingest.v1.NormalizedLog records = 1;
+}
+
+// Result for each input record (1:1 alignment with request.records).
+message TemplateResult {
+  // Stable identifier (hash of canonical template).
+  string template_id = 1;
+
+  // Canonical masked template text (post-PII redaction).
+  string template = 2;
+
+  // Pre-built regex derived from placeholders, for LogQL generation.
+  string regex = 3;
+
+  // Optional group signature / bucket id (e.g., token-type sequence).
+  string group_signature = 4;
+
+  // Confidence (0..1) for the assignment.
+  float confidence = 5;
+
+  // First/last time we saw this template (as known by the miner).
+  google.protobuf.Timestamp first_seen = 6;
+  google.protobuf.Timestamp last_seen  = 7;
+
+  // Optional bounded exemplars (very small).
+  repeated string examples = 8;
+}
+
+// Batch response; results[i] corresponds to request.records[i].
+message AnalyzeResponse {
+  repeated TemplateResult results = 1;
+}
+
+// Miner API - can be in-proc or a network service.
+service MinerService {
+  rpc Analyze (AnalyzeRequest) returns (AnalyzeResponse);
+}

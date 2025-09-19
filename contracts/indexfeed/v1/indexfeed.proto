@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package indexfeed.v1;
+
+option go_package = "github.com/kumarabd/ingestion-plane/contracts/indexfeed/v1;indexfeedv1";
+
+import "google/protobuf/timestamp.proto";
+import "common/v1/common.proto";
+
+// Stats block carried with template events.
+message TemplateStats {
+  common.v1.WindowCounts windows = 1;
+  google.protobuf.Timestamp first_seen = 2;
+  google.protobuf.Timestamp last_seen  = 3;
+}
+
+// Simple anomaly payload for spike events.
+message Anomaly {
+  string window = 1;           // e.g., "10m" or "1h"
+  double baseline_p95 = 2;     // baseline rate
+  double current_rate = 3;     // observed
+  double spike_factor = 4;     // current / baseline
+}
+
+// Event published to the index-feed (Kafka/Redpanda/OTLP).
+message TemplateEvent {
+  common.v1.TemplateEventType type = 1;
+
+  string template_id = 2;
+  string template    = 3;
+  string regex       = 4;
+
+  // Minimal labels for filtering in the semantic index.
+  map<string, string> labels = 5;
+
+  // Usage stats for ranking/aging.
+  TemplateStats stats = 6;
+
+  // Optional bounded exemplars (masked).
+  repeated common.v1.Exemplar examples = 7;
+
+  // Present for TEMPLATE_SPIKE events.
+  Anomaly anomaly = 8;
+
+  // Idempotency key for de-dupe on the consumer side.
+  string event_id = 9;
+}

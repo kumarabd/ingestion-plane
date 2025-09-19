@@ -1,0 +1,8 @@
+<!-- Editable link for GitHub -->
+{% if site.github_repo and site.github_user %}
+<div class="edit-link">
+  <a href="https://github.com/{{ site.github_user }}/{{ site.github_repo }}/edit/main/{{ page.path }}" target="_blank">
+    <i class="fa fa-edit"></i> Edit this page
+  </a>
+</div>
+{% endif %}

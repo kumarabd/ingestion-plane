@@ -1,0 +1,207 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "ingest/v1/ingest.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "IngestService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/ingest.v1.IngestService/Push": {
+      "post": {
+        "operationId": "IngestService_Push",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Ack"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "Batch wrapper for efficient ingestion.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1NormalizedLogBatch"
+            }
+          }
+        ],
+        "tags": [
+          "IngestService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1Ack": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "description": "Simple acknowledgement."
+    },
+    "v1NormalizedLog": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Canonical labels to keep cardinality sane; include tenant/service/env/severity."
+        },
+        "message": {
+          "type": "string",
+          "description": "Canonicalized, redacted message string (what miners see)."
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional structured fields promoted from json/logfmt (bounded, small)."
+        },
+        "schema": {
+          "$ref": "#/definitions/v1Schema",
+          "description": "Source schema classification for this line."
+        },
+        "severity": {
+          "$ref": "#/definitions/v1Severity",
+          "description": "Normalized severity (also present in labels)."
+        },
+        "sanitized": {
+          "type": "boolean",
+          "description": "True if UTF-8 fixups / sanitization occurred."
+        },
+        "originalLength": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Original payload length before truncation."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "Truncation flag applied during bounds enforcement."
+        },
+        "redaction": {
+          "$ref": "#/definitions/v1RedactionReport",
+          "description": "PII redaction report."
+        },
+        "correlationId": {
+          "type": "string",
+          "description": "Opaque correlation id for tracing across services (optional)."
+        }
+      },
+      "description": "Normalized log record emitted by the Pre-Normalizer + PII Redactor."
+    },
+    "v1NormalizedLogBatch": {
+      "type": "object",
+      "properties": {
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NormalizedLog"
+          }
+        }
+      },
+      "description": "Batch wrapper for efficient ingestion."
+    },
+    "v1RedactionReport": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "e.g., [\"pii.email\",\"pii.ipv4\"]"
+        },
+        "count": {
+          "type": "integer",
+          "format": "int64",
+          "title": "number of replacements performed"
+        }
+      },
+      "description": "Redaction metadata for auditing."
+    },
+    "v1Schema": {
+      "type": "string",
+      "enum": [
+        "SCHEMA_UNSPECIFIED",
+        "SCHEMA_JSON",
+        "SCHEMA_LOGFMT",
+        "SCHEMA_TEXT"
+      ],
+      "default": "SCHEMA_UNSPECIFIED",
+      "description": "Source schema of the incoming payload after detection."
+    },
+    "v1Severity": {
+      "type": "string",
+      "enum": [
+        "SEVERITY_UNSPECIFIED",
+        "SEVERITY_DEBUG",
+        "SEVERITY_INFO",
+        "SEVERITY_WARN",
+        "SEVERITY_ERROR",
+        "SEVERITY_FATAL"
+      ],
+      "default": "SEVERITY_UNSPECIFIED",
+      "description": "Normalized severity. Keep mapping small; do not mirror every library level."
+    }
+  }
+}

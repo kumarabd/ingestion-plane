@@ -1,0 +1,18 @@
+<!-- Navigation header -->
+<header class="md-header" data-md-component="header">
+  <nav class="md-header-nav md-grid">
+    <div class="md-flex">
+      <div class="md-flex__cell md-flex__cell--shrink">
+        <a href="{{ site.baseurl }}/" title="{{ site.title }}" class="md-header-nav__button md-logo">
+          {% if site.logo %}
+            <img src="{{ site.baseurl }}/{{ site.logo }}" width="24" height="24">
+          {% endif %}
+          {{ site.title }}
+        </a>
+      </div>
+      <div class="md-flex__cell md-flex__cell--shrink md-flex__cell--middle">
+        <label class="md-icon md-icon--menu md-header-nav__button" for="__drawer"></label>
+      </div>
+    </div>
+  </nav>
+</header>

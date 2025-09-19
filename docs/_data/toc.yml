@@ -1,0 +1,29 @@
+- title: "Learn"
+  url: "docs/learn/overview"
+  children:
+    - title: Overview
+      url: "docs/learn/overview"
+    - title: Problem & Strategy
+      url: "docs/learn/overview/problem-strategy"
+    - title: Use Cases
+      url: "docs/learn/overview/use-cases"
+- title: "Implement"
+  url: "docs/implement/getting-started"
+  children:
+    - title: Getting Started
+      url: "docs/implement/getting-started"
+    - title: User Guide
+      url: "docs/implement/user-guide"
+    - title: Troubleshooting
+      url: "docs/implement/troubleshooting"
+- title: "Reference"
+  url: "docs/reference/component-specs"
+  children:
+    - title: Component Specifications
+      url: "docs/reference/component-specs"
+    - title: Data Contracts & APIs
+      url: "docs/reference/data-contracts"
+    - title: API Reference
+      url: "docs/reference/api-reference"
+- title: "About"
+  url: "about"

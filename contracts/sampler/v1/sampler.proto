@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package sampler.v1;
+
+option go_package = "github.com/kumarabd/ingestion-plane/contracts/sampler/v1;samplerv1";
+
+import "google/protobuf/timestamp.proto";
+import "common/v1/common.proto";
+
+// Decision request combines miner output + key labels used for policy.
+message DecisionRequest {
+  google.protobuf.Timestamp timestamp = 1;
+
+  // Keyed labels used in policy decisions (e.g., service, env, severity, namespace).
+  map<string, string> labels = 2;
+
+  // Template identity for this line.
+  string template_id = 3;
+
+  // Normalized severity also provided explicitly.
+  common.v1.Severity severity = 4;
+}
+
+// Decision result for a single line.
+message Decision {
+  common.v1.Action action = 1;
+
+  // If kept, why it was kept (policy ladder reason).
+  common.v1.KeepReason keep_reason = 2;
+
+  // Rolling counters (for transparency & UI).
+  common.v1.WindowCounts counters = 3;
+
+  // Optional debug notes (not for hot path parsing).
+  string note = 4;
+}
+
+// Batch version for throughput.
+message DecisionBatchRequest {
+  repeated DecisionRequest items = 1;
+}
+
+message DecisionBatchResponse {
+  repeated Decision items = 1;
+}
+
+// Sampler API - called by the gateway after mining.
+service SamplerService {
+  rpc DecideOne (DecisionRequest) returns (Decision);
+  rpc DecideBatch (DecisionBatchRequest) returns (DecisionBatchResponse);
+}

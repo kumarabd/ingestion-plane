@@ -1,0 +1,254 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "miner/v1/miner.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "MinerService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/miner.v1.MinerService/Analyze": {
+      "post": {
+        "operationId": "MinerService_Analyze",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AnalyzeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "Request to analyze normalized logs (usually batched).",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1AnalyzeRequest"
+            }
+          }
+        ],
+        "tags": [
+          "MinerService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1AnalyzeRequest": {
+      "type": "object",
+      "properties": {
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NormalizedLog"
+          }
+        }
+      },
+      "description": "Request to analyze normalized logs (usually batched)."
+    },
+    "v1AnalyzeResponse": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TemplateResult"
+          }
+        }
+      },
+      "description": "Batch response; results[i] corresponds to request.records[i]."
+    },
+    "v1NormalizedLog": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Canonical labels to keep cardinality sane; include tenant/service/env/severity."
+        },
+        "message": {
+          "type": "string",
+          "description": "Canonicalized, redacted message string (what miners see)."
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional structured fields promoted from json/logfmt (bounded, small)."
+        },
+        "schema": {
+          "$ref": "#/definitions/v1Schema",
+          "description": "Source schema classification for this line."
+        },
+        "severity": {
+          "$ref": "#/definitions/v1Severity",
+          "description": "Normalized severity (also present in labels)."
+        },
+        "sanitized": {
+          "type": "boolean",
+          "description": "True if UTF-8 fixups / sanitization occurred."
+        },
+        "originalLength": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Original payload length before truncation."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "Truncation flag applied during bounds enforcement."
+        },
+        "redaction": {
+          "$ref": "#/definitions/v1RedactionReport",
+          "description": "PII redaction report."
+        },
+        "correlationId": {
+          "type": "string",
+          "description": "Opaque correlation id for tracing across services (optional)."
+        }
+      },
+      "description": "Normalized log record emitted by the Pre-Normalizer + PII Redactor."
+    },
+    "v1RedactionReport": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "e.g., [\"pii.email\",\"pii.ipv4\"]"
+        },
+        "count": {
+          "type": "integer",
+          "format": "int64",
+          "title": "number of replacements performed"
+        }
+      },
+      "description": "Redaction metadata for auditing."
+    },
+    "v1Schema": {
+      "type": "string",
+      "enum": [
+        "SCHEMA_UNSPECIFIED",
+        "SCHEMA_JSON",
+        "SCHEMA_LOGFMT",
+        "SCHEMA_TEXT"
+      ],
+      "default": "SCHEMA_UNSPECIFIED",
+      "description": "Source schema of the incoming payload after detection."
+    },
+    "v1Severity": {
+      "type": "string",
+      "enum": [
+        "SEVERITY_UNSPECIFIED",
+        "SEVERITY_DEBUG",
+        "SEVERITY_INFO",
+        "SEVERITY_WARN",
+        "SEVERITY_ERROR",
+        "SEVERITY_FATAL"
+      ],
+      "default": "SEVERITY_UNSPECIFIED",
+      "description": "Normalized severity. Keep mapping small; do not mirror every library level."
+    },
+    "v1TemplateResult": {
+      "type": "object",
+      "properties": {
+        "templateId": {
+          "type": "string",
+          "description": "Stable identifier (hash of canonical template)."
+        },
+        "template": {
+          "type": "string",
+          "description": "Canonical masked template text (post-PII redaction)."
+        },
+        "regex": {
+          "type": "string",
+          "description": "Pre-built regex derived from placeholders, for LogQL generation."
+        },
+        "groupSignature": {
+          "type": "string",
+          "description": "Optional group signature / bucket id (e.g., token-type sequence)."
+        },
+        "confidence": {
+          "type": "number",
+          "format": "float",
+          "description": "Confidence (0..1) for the assignment."
+        },
+        "firstSeen": {
+          "type": "string",
+          "format": "date-time",
+          "description": "First/last time we saw this template (as known by the miner)."
+        },
+        "lastSeen": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional bounded exemplars (very small)."
+        }
+      },
+      "description": "Result for each input record (1:1 alignment with request.records)."
+    }
+  }
+}
