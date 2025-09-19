@@ -40,28 +40,30 @@ type PipelineConfig struct {
 	EnqueueTimeout time.Duration `json:"enqueue_timeout" yaml:"enqueue_timeout" default:"5s"`
 }
 
-// RawLogBatch represents a batch of raw logs
-type RawLogBatch struct {
-	Records []ingest.RawLog `json:"records"`
-}
+// RawLogBatch is now defined in the ingest package and used for all protocols
 
 // queuedItem represents an item queued for pipeline processing
 type queuedItem struct {
 	Ctx   context.Context
-	Batch RawLogBatch
+	Batch ingest.RawLogBatch
 }
 
 // HTTP implements the Server interface for HTTP
 type HTTP struct {
 	handler   *gin.Engine
 	ingest    *ingest.Handler
-	processor *ingest.Processor
 	log       *logger.Handler
 	metric    *metrics.Handler
 	config    *HTTPConfig
 	server    *http.Server
 	isRunning bool
 	mu        sync.RWMutex
+
+	// Raw worker components
+	rawQueue     chan queuedItem
+	workerCtx    context.Context
+	workerCancel context.CancelFunc
+	workerWg     sync.WaitGroup
 }
 
 // NewHTTP creates a new HTTP server instance
@@ -81,13 +83,18 @@ func NewHTTP(config *HTTPConfig, in *ingest.Handler, l *logger.Handler, m *metri
 		}
 	}
 
+	// Initialize worker context
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+
 	server := &HTTP{
-		handler:   gin.New(),
-		ingest:    in,
-		processor: in.GetProcessor(),
-		log:       l,
-		metric:    m,
-		config:    config,
+		handler:      gin.New(),
+		ingest:       in,
+		log:          l,
+		metric:       m,
+		config:       config,
+		rawQueue:     make(chan queuedItem, config.Bounds.MaxBatch*2), // Buffer for 2x max batch size
+		workerCtx:    workerCtx,
+		workerCancel: workerCancel,
 	}
 
 	// Add global middleware
@@ -102,7 +109,7 @@ func NewHTTP(config *HTTPConfig, in *ingest.Handler, l *logger.Handler, m *metri
 	return server
 }
 
-// Start starts the HTTP server
+// Start starts the HTTP server and raw worker
 func (s *HTTP) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,6 +117,9 @@ func (s *HTTP) Start() error {
 	if s.isRunning {
 		return fmt.Errorf("HTTP server is already running")
 	}
+
+	// Start the raw worker
+	s.startRawWorker()
 
 	addr := fmt.Sprintf("%s:%s", s.config.Host, s.config.Port)
 
@@ -127,7 +137,7 @@ func (s *HTTP) Start() error {
 	return s.server.ListenAndServe()
 }
 
-// Stop gracefully shuts down the HTTP server
+// Stop gracefully shuts down the HTTP server and raw worker
 func (s *HTTP) Stop(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -137,6 +147,9 @@ func (s *HTTP) Stop(ctx context.Context) error {
 	}
 
 	s.log.Info().Msg("Shutting down HTTP server...")
+
+	// Stop the raw worker first
+	s.stopRawWorker()
 
 	if err := s.server.Shutdown(ctx); err != nil {
 		s.log.Error().Err(err).Msg("Error during HTTP server shutdown")
@@ -246,5 +259,61 @@ func (s *HTTP) corsMiddleware() gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+
+// startRawWorker starts the background raw worker goroutine
+func (s *HTTP) startRawWorker() {
+	s.workerWg.Add(1)
+	go s.runRawWorker()
+	s.log.Info().Msg("Raw worker started")
+}
+
+// stopRawWorker gracefully stops the raw worker
+func (s *HTTP) stopRawWorker() {
+	s.log.Info().Msg("Stopping raw worker...")
+	s.workerCancel()
+	s.workerWg.Wait()
+	s.log.Info().Msg("Raw worker stopped")
+}
+
+// runRawWorker continuously processes queued raw batches
+func (s *HTTP) runRawWorker() {
+	defer s.workerWg.Done()
+
+	s.log.Info().Msg("Raw worker started processing")
+
+	for {
+		select {
+		case item := <-s.rawQueue:
+			batch, err := s.ingest.NormalizeAndRedactBatch(item.Ctx, &item.Batch, s.log, s.metric)
+			if err != nil {
+				s.log.Error().Err(err).Msg("Failed to process raw batch")
+			} else if batch != nil && len(batch.Records) > 0 {
+				if err := s.ingest.GetEmitter().EmitNormalizedLogBatch(item.Ctx, batch); err != nil {
+					s.log.Error().Err(err).Msg("Failed to emit normalized log batch")
+				}
+			}
+		case <-s.workerCtx.Done():
+			s.log.Info().Msg("Raw worker shutting down")
+			return
+		}
+	}
+}
+
+// enqueueRawBatch enqueues a raw batch for background processing with timeout handling
+func (s *HTTP) enqueueRawBatch(ctx context.Context, batch ingest.RawLogBatch) error {
+	item := queuedItem{
+		Ctx:   ctx,
+		Batch: batch,
+	}
+
+	select {
+	case s.rawQueue <- item:
+		return nil
+	case <-time.After(s.config.Pipeline.EnqueueTimeout):
+		return fmt.Errorf("enqueue timeout after %v", s.config.Pipeline.EnqueueTimeout)
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }

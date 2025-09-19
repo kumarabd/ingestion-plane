@@ -41,35 +41,40 @@ func (s *HTTP) otlpHandler(c *gin.Context, start time.Time) {
 		return
 	}
 
-	// Convert OTLP request to common ingest request
-	commonReq := s.convertOTLPToCommonRequest(&req)
+	// Convert OTLP request to standardized RawLogBatch
+	rawLogBatch := s.convertOTLPToRawLogBatch(&req)
 
-	// Process using unified processor
-	processor := s.ingest.GetProcessor()
-	result, err := processor.ProcessRequest(ctx, commonReq)
-
-	if err != nil {
-		s.log.Error().Err(err).Msg("Failed to process OTLP logs")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process logs"})
+	// Enqueue for background processing
+	if err := s.enqueueRawBatch(ctx, *rawLogBatch); err != nil {
+		if s.metric != nil {
+			s.metric.IncIngestRejectedTotal("enqueue_timeout")
+		}
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "service busy, please retry"})
 		return
 	}
 
-	// Return success response
-	c.JSON(http.StatusOK, gin.H{
-		"status":         "success",
-		"processed_logs": result.ProcessedCount,
-		"timestamp":      time.Now().UTC(),
-	})
-
-	// Record metrics
+	// Record enqueue metrics
+	latency := time.Since(start).Seconds()
 	if s.metric != nil {
-		s.metric.ObserveIngestHandlerLatency(time.Since(start), "otlp", true)
+		s.metric.AddHistogram("otlp_enqueue_latency_seconds", latency, map[string]string{
+			"method": "POST",
+		})
+		s.metric.IncrementCounter("otlp_logs_enqueued_total", map[string]string{
+			"method": "POST",
+			"status": "success",
+		})
 	}
+
+	// Return success response immediately
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "success",
+		"timestamp": time.Now().UTC(),
+	})
 }
 
-// convertOTLPToCommonRequest converts OTLP request to common ingest request
-func (s *HTTP) convertOTLPToCommonRequest(otlpReq *plogotlp.ExportRequest) *ingest.CommonIngestRequest {
-	var records []ingest.CommonIngestRecord
+// convertOTLPToRawLogBatch converts OTLP request to raw log batch (same pattern as other handlers)
+func (s *HTTP) convertOTLPToRawLogBatch(otlpReq *plogotlp.ExportRequest) *ingest.RawLogBatch {
+	var records []ingest.RawLog
 	logs := otlpReq.Logs()
 
 	resourceLogs := logs.ResourceLogs()
@@ -120,38 +125,24 @@ func (s *HTTP) convertOTLPToCommonRequest(otlpReq *plogotlp.ExportRequest) *inge
 					labels["scope.version"] = scopeLog.Scope().Version()
 				}
 
-				// Extract fields from log record attributes
-				fields := make(map[string]string)
-				logAttrs := logRecord.Attributes()
-				logAttrs.Range(func(k string, v pcommon.Value) bool {
-					if len(fields) >= s.ingest.GetConfig().MaxFields {
-						return false
-					}
-					if v.Type() == pcommon.ValueTypeStr {
-						fields[k] = v.Str()
-					}
-					return true
-				})
-
-				// Add standard OTLP fields
+				// Add standard OTLP fields to labels
 				if logRecord.SeverityNumber() != 0 {
-					fields["severity_number"] = fmt.Sprintf("%d", logRecord.SeverityNumber())
+					labels["severity_number"] = fmt.Sprintf("%d", logRecord.SeverityNumber())
 				}
 				if logRecord.SeverityText() != "" {
-					fields["severity_text"] = logRecord.SeverityText()
+					labels["severity_text"] = logRecord.SeverityText()
 				}
-				if logRecord.TraceID().IsEmpty() == false {
-					fields["trace_id"] = logRecord.TraceID().String()
+				if !logRecord.TraceID().IsEmpty() {
+					labels["trace_id"] = logRecord.TraceID().String()
 				}
-				if logRecord.SpanID().IsEmpty() == false {
-					fields["span_id"] = logRecord.SpanID().String()
+				if !logRecord.SpanID().IsEmpty() {
+					labels["span_id"] = logRecord.SpanID().String()
 				}
 
-				record := ingest.CommonIngestRecord{
-					Timestamp: timestamp,
+				record := ingest.RawLog{
+					Timestamp: time.Unix(0, timestamp),
 					Labels:    labels,
-					Message:   message,
-					Fields:    fields,
+					Payload:   message,
 				}
 
 				records = append(records, record)
@@ -159,9 +150,8 @@ func (s *HTTP) convertOTLPToCommonRequest(otlpReq *plogotlp.ExportRequest) *inge
 		}
 	}
 
-	return &ingest.CommonIngestRequest{
-		Protocol: "otlp",
-		Records:  records,
+	return &ingest.RawLogBatch{
+		Records: records,
 	}
 }
 
@@ -208,92 +198,4 @@ func (s *HTTP) findOTLPLogRecord(logs plog.Logs, targetIndex int) (plog.Resource
 	}
 
 	return plog.ResourceLogs{}, plog.ScopeLogs{}, plog.LogRecord{}, fmt.Errorf("log record at index %d not found", targetIndex)
-}
-
-// normalizeOTLPLogRecord converts an OTLP log record to a normalized log
-func (s *HTTP) normalizeOTLPLogRecord(resourceLog plog.ResourceLogs, scopeLog plog.ScopeLogs, logRecord plog.LogRecord) (*ingest.NormalizedLog, error) {
-	// Extract timestamp
-	timestamp := logRecord.Timestamp().AsTime().UnixNano()
-	if timestamp == 0 {
-		timestamp = time.Now().UnixNano()
-	}
-
-	// Extract message
-	message := logRecord.Body().AsString()
-	if !s.ingest.GetConfig().ValidateUTF8 || !utf8.ValidString(message) {
-		if s.ingest.GetConfig().ValidateUTF8 {
-			return nil, fmt.Errorf("invalid UTF-8 in log message")
-		}
-		// If UTF-8 validation is disabled, replace invalid sequences
-		message = strings.ToValidUTF8(message, "")
-	}
-
-	// Validate message size
-	if len(message) > s.ingest.GetConfig().MaxLogSize {
-		return nil, fmt.Errorf("log message too large: %d bytes", len(message))
-	}
-
-	// Extract labels from resource attributes
-	labels := make(map[string]string)
-	resourceAttrs := resourceLog.Resource().Attributes()
-	resourceAttrs.Range(func(k string, v pcommon.Value) bool {
-		if len(labels) >= s.ingest.GetConfig().MaxLabels {
-			return false // Stop if we hit the limit
-		}
-		if v.Type() == pcommon.ValueTypeStr {
-			labels[k] = v.Str()
-		}
-		return true
-	})
-
-	// Add scope information to labels
-	if scopeLog.Scope().Name() != "" {
-		labels["scope.name"] = scopeLog.Scope().Name()
-	}
-	if scopeLog.Scope().Version() != "" {
-		labels["scope.version"] = scopeLog.Scope().Version()
-	}
-
-	// Extract fields from log record attributes
-	fields := make(map[string]string)
-	logAttrs := logRecord.Attributes()
-	logAttrs.Range(func(k string, v pcommon.Value) bool {
-		if len(fields) >= s.ingest.GetConfig().MaxFields {
-			return false // Stop if we hit the limit
-		}
-		if v.Type() == pcommon.ValueTypeStr {
-			fields[k] = v.Str()
-		}
-		return true
-	})
-
-	// Add standard OTLP fields
-	if logRecord.SeverityNumber() != 0 {
-		fields["severity_number"] = fmt.Sprintf("%d", logRecord.SeverityNumber())
-	}
-	if logRecord.SeverityText() != "" {
-		fields["severity_text"] = logRecord.SeverityText()
-	}
-	if logRecord.TraceID().IsEmpty() == false {
-		fields["trace_id"] = logRecord.TraceID().String()
-	}
-	if logRecord.SpanID().IsEmpty() == false {
-		fields["span_id"] = logRecord.SpanID().String()
-	}
-
-	// Determine schema type
-	schema := ingest.DetermineSchema(message, fields)
-
-	// Create normalized log
-	normalizedLog := &ingest.NormalizedLog{
-		Timestamp: timestamp,
-		Labels:    labels,
-		Message:   message,
-		Fields:    fields,
-		Schema:    schema,
-		Sanitized: false, // No redaction/masking yet
-		OrigLen:   uint32(len(message)),
-	}
-
-	return normalizedLog, nil
 }

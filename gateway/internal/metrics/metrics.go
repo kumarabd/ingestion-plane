@@ -13,6 +13,8 @@ type Handler struct {
 	IngestRecordsTotal   *prometheus.CounterVec
 	IngestRejectedTotal  *prometheus.CounterVec
 	IngestHandlerLatency *prometheus.HistogramVec
+	PIIRedactionsTotal   *prometheus.CounterVec
+	NormalizeLatency     *prometheus.HistogramVec
 }
 
 type Options struct {
@@ -45,6 +47,15 @@ func New(name string) (*Handler, error) {
 			Help:    "The latency of ingest handler requests",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"source", "success"}),
+		PIIRedactionsTotal: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "pii_redactions_total",
+			Help: "The total number of PII redactions performed",
+		}, []string{"rule"}),
+		NormalizeLatency: promauto.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "normalize_latency_seconds",
+			Help:    "The latency of normalize and redact batch operations",
+			Buckets: prometheus.DefBuckets,
+		}, []string{"success"}),
 	}, nil
 }
 
@@ -70,6 +81,20 @@ func (h *Handler) ObserveIngestHandlerLatency(duration time.Duration, source str
 		successStr = "false"
 	}
 	h.IngestHandlerLatency.WithLabelValues(source, successStr).Observe(duration.Seconds())
+}
+
+// IncPIIRedactionsTotal increments the PII redactions counter for a specific rule
+func (h *Handler) IncPIIRedactionsTotal(rule string) {
+	h.PIIRedactionsTotal.WithLabelValues(rule).Inc()
+}
+
+// ObserveNormalizeLatency records the latency of normalize and redact batch operations
+func (h *Handler) ObserveNormalizeLatency(duration time.Duration, success bool) {
+	successStr := "true"
+	if !success {
+		successStr = "false"
+	}
+	h.NormalizeLatency.WithLabelValues(successStr).Observe(duration.Seconds())
 }
 
 // Counter represents a Prometheus counter

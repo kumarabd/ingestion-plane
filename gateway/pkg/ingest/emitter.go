@@ -43,82 +43,100 @@ func NewEmitter(config *EmitterConfig, log *logger.Handler, metric *metrics.Hand
 	return emitter, nil
 }
 
-// EmitNormalizedLog emits a normalized log
-func (e *Emitter) EmitNormalizedLog(ctx context.Context, normalizedLog *NormalizedLog) error {
+// EmitNormalizedLogBatch emits a batch of normalized logs
+func (e *Emitter) EmitNormalizedLogBatch(ctx context.Context, batch *NormalizedLogBatch) error {
+	if batch == nil || len(batch.Records) == 0 {
+		return nil
+	}
+
 	switch e.config.OutputType {
 	case "stdout":
-		return e.emitToStdout(ctx, normalizedLog)
+		return e.emitBatchToStdout(ctx, batch)
 	case "kafka":
-		return e.emitToKafka(ctx, normalizedLog)
+		return e.emitBatchToKafka(ctx, batch)
 	case "grpc":
-		return e.emitToGRPC(ctx, normalizedLog)
+		return e.emitBatchToGRPC(ctx, batch)
 	case "forwarder":
-		return e.emitToForwarder(ctx, normalizedLog)
+		return e.emitBatchToForwarder(ctx, batch)
 	default:
 		return fmt.Errorf("unsupported output type: %s", e.config.OutputType)
 	}
 }
 
-// emitToStdout emits normalized log to stdout (for development/testing)
-func (e *Emitter) emitToStdout(ctx context.Context, normalizedLog *NormalizedLog) error {
-	// Convert to JSON for output
-	jsonData, err := json.Marshal(normalizedLog)
+// emitBatchToStdout emits a batch of normalized logs to stdout (for development/testing)
+func (e *Emitter) emitBatchToStdout(ctx context.Context, batch *NormalizedLogBatch) error {
+	// Convert batch to JSON for output
+	jsonData, err := json.Marshal(batch)
 	if err != nil {
-		e.log.Error().Err(err).Msg("Failed to marshal normalized log to JSON")
+		if e.log != nil {
+			e.log.Error().Err(err).Msg("Failed to marshal normalized log batch to JSON")
+		}
 		return err
 	}
 
-	// Log the normalized log
-	e.log.Info().
-		Str("schema", normalizedLog.Schema).
-		Int64("timestamp", normalizedLog.Timestamp).
-		Uint32("orig_len", normalizedLog.OrigLen).
-		Bool("sanitized", normalizedLog.Sanitized).
-		RawJSON("normalized_log", jsonData).
-		Msg("Emitted normalized log")
+	// Log the batch
+	if e.log != nil {
+		e.log.Info().
+			Int("batch_size", len(batch.Records)).
+			RawJSON("normalized_log_batch", jsonData).
+			Msg("Emitted normalized log batch")
+	}
 
-	// Record metrics
-	e.metric.IncrementCounter("normalized_logs_emitted_total", map[string]string{
-		"output_type": "stdout",
-		"schema":      normalizedLog.Schema,
-	})
+	// Record metrics for each log in the batch
+	if e.metric != nil {
+		for _, normalizedLog := range batch.Records {
+			e.metric.IncrementCounter("normalized_logs_emitted_total", map[string]string{
+				"output_type": "stdout",
+				"schema":      normalizedLog.Schema,
+			})
+		}
+	}
 
 	return nil
 }
 
-// emitToKafka emits normalized log to Kafka (placeholder for future implementation)
-func (e *Emitter) emitToKafka(ctx context.Context, normalizedLog *NormalizedLog) error {
-	// TODO: Implement Kafka emission
-	e.log.Info().Msg("Kafka emission not yet implemented, falling back to stdout")
-	return e.emitToStdout(ctx, normalizedLog)
+// emitBatchToKafka emits a batch of normalized logs to Kafka (placeholder for future implementation)
+func (e *Emitter) emitBatchToKafka(ctx context.Context, batch *NormalizedLogBatch) error {
+	// TODO: Implement Kafka batch emission
+	if e.log != nil {
+		e.log.Info().Msg("Kafka batch emission not yet implemented, falling back to stdout")
+	}
+	return e.emitBatchToStdout(ctx, batch)
 }
 
-// emitToGRPC emits normalized log via gRPC (placeholder for future implementation)
-func (e *Emitter) emitToGRPC(ctx context.Context, normalizedLog *NormalizedLog) error {
-	// TODO: Implement gRPC emission
-	e.log.Info().Msg("gRPC emission not yet implemented, falling back to stdout")
-	return e.emitToStdout(ctx, normalizedLog)
+// emitBatchToGRPC emits a batch of normalized logs via gRPC (placeholder for future implementation)
+func (e *Emitter) emitBatchToGRPC(ctx context.Context, batch *NormalizedLogBatch) error {
+	// TODO: Implement gRPC batch emission
+	if e.log != nil {
+		e.log.Info().Msg("gRPC batch emission not yet implemented, falling back to stdout")
+	}
+	return e.emitBatchToStdout(ctx, batch)
 }
 
-// emitToForwarder emits normalized log via forwarder
-func (e *Emitter) emitToForwarder(ctx context.Context, normalizedLog *NormalizedLog) error {
+// emitBatchToForwarder emits a batch of normalized logs via forwarder
+func (e *Emitter) emitBatchToForwarder(ctx context.Context, batch *NormalizedLogBatch) error {
 	if e.forwarder == nil {
 		return fmt.Errorf("forwarder not initialized")
 	}
 
-	// Convert to forwarder log entry format
-	logEntry := &forwarder.LogEntry{
-		Timestamp: normalizedLog.Timestamp,
-		Labels:    normalizedLog.Labels,
-		Message:   normalizedLog.Message,
-		Fields:    normalizedLog.Fields,
-		Schema:    normalizedLog.Schema,
-		Sanitized: normalizedLog.Sanitized,
-		OrigLen:   normalizedLog.OrigLen,
+	// Forward each log entry individually (forwarder handles internal batching)
+	var lastErr error
+	for _, normalizedLog := range batch.Records {
+		logEntry := &forwarder.LogEntry{
+			Timestamp: normalizedLog.Timestamp.UnixNano(),
+			Labels:    normalizedLog.Labels,
+			Message:   normalizedLog.Message,
+			Schema:    normalizedLog.Schema,
+			Sanitized: normalizedLog.Sanitized,
+		}
+
+		if err := e.forwarder.Forward(ctx, logEntry); err != nil {
+			lastErr = err
+			// Continue processing other logs in the batch
+		}
 	}
 
-	// Forward the log
-	return e.forwarder.Forward(ctx, logEntry)
+	return lastErr
 }
 
 // Start starts the emitter (required for forwarder)

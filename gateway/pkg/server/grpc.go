@@ -39,7 +39,6 @@ type GRPC struct {
 	ingestv1.UnimplementedIngestServiceServer
 	handler   *grpc.Server
 	ingest    *ingest.Handler
-	processor *ingest.Processor
 	log       *logger.Handler
 	metric    *metrics.Handler
 	tracer    trace.Tracer
@@ -66,13 +65,12 @@ func NewGRPC(config *GRPCConfig, in *ingest.Handler, log *logger.Handler, metric
 	)
 
 	server := &GRPC{
-		handler:   handler,
-		ingest:    in,
-		processor: in.GetProcessor(),
-		log:       log,
-		metric:    metric,
-		config:    config,
-		tracer:    otel.Tracer("gateway/grpc"),
+		handler: handler,
+		ingest:  in,
+		log:     log,
+		metric:  metric,
+		config:  config,
+		tracer:  otel.Tracer("gateway/grpc"),
 	}
 
 	// Register the IngestService
@@ -150,29 +148,29 @@ func (s *GRPC) Push(ctx context.Context, req *ingestv1.NormalizedLogBatch) (*ing
 		}, status.Error(grpcCodes.InvalidArgument, "request cannot be nil")
 	}
 
-	// Convert gRPC request to common ingest request
-	commonReq := s.convertGRPCToCommonRequest(req)
+	if len(req.Records) == 0 {
+		span.RecordError(status.Error(grpcCodes.InvalidArgument, "batch cannot be empty"))
+		span.SetStatus(codes.Error, "empty batch")
+		return &ingestv1.Ack{
+			Message: "batch cannot be empty",
+		}, status.Error(grpcCodes.InvalidArgument, "batch cannot be empty")
+	}
 
-	// Process using unified processor
-	result, err := s.processor.ProcessRequest(ctx, commonReq)
+	// Convert gRPC request to raw log batch (same pattern as HTTP handlers)
+	rawBatch := s.convertGRPCToRawLogBatch(req)
 
+	// Validate batch size
+	if len(rawBatch.Records) > s.ingest.GetConfig().MaxBatchSize {
+		span.RecordError(status.Error(grpcCodes.InvalidArgument, "batch size exceeds maximum"))
+		span.SetStatus(codes.Error, "batch too large")
+		return &ingestv1.Ack{
+			Message: "batch size exceeds maximum",
+		}, status.Error(grpcCodes.InvalidArgument, "batch size exceeds maximum")
+	}
+
+	// Process using the same pattern as HTTP handlers
+	batch, err := s.ingest.NormalizeAndRedactBatch(ctx, rawBatch, s.log, s.metric)
 	if err != nil {
-		// Handle validation errors
-		if err.Error() == "empty batch" {
-			span.RecordError(status.Error(grpcCodes.InvalidArgument, "batch cannot be empty"))
-			span.SetStatus(codes.Error, "empty batch")
-			return &ingestv1.Ack{
-				Message: "batch cannot be empty",
-			}, status.Error(grpcCodes.InvalidArgument, "batch cannot be empty")
-		}
-		if err.Error() == "batch size exceeds maximum" {
-			span.RecordError(status.Error(grpcCodes.InvalidArgument, "batch size exceeds maximum"))
-			span.SetStatus(codes.Error, "batch too large")
-			return &ingestv1.Ack{
-				Message: "batch size exceeds maximum",
-			}, status.Error(grpcCodes.InvalidArgument, "batch size exceeds maximum")
-		}
-		// Other errors
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "processing failed")
 		return &ingestv1.Ack{
@@ -180,12 +178,23 @@ func (s *GRPC) Push(ctx context.Context, req *ingestv1.NormalizedLogBatch) (*ing
 		}, status.Error(grpcCodes.Internal, "processing failed")
 	}
 
+	// Emit the batch
+	if batch != nil && len(batch.Records) > 0 {
+		if err := s.ingest.GetEmitter().EmitNormalizedLogBatch(ctx, batch); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "emission failed")
+			return &ingestv1.Ack{
+				Message: "emission failed",
+			}, status.Error(grpcCodes.Internal, "emission failed")
+		}
+	}
+
 	// Record metrics
 	latency := time.Since(start).Seconds()
 	s.metric.AddHistogram("grpc_push_latency_seconds", latency, map[string]string{
 		"method": "Push",
 	})
-	s.metric.AddHistogram("grpc_batch_size", float64(result.TotalReceived), map[string]string{
+	s.metric.AddHistogram("grpc_batch_size", float64(len(rawBatch.Records)), map[string]string{
 		"method": "Push",
 	})
 	s.metric.IncrementCounter("grpc_logs_processed_total", map[string]string{
@@ -195,8 +204,8 @@ func (s *GRPC) Push(ctx context.Context, req *ingestv1.NormalizedLogBatch) (*ing
 
 	// Set span attributes
 	span.SetAttributes(
-		attribute.Int("batch.size", result.TotalReceived),
-		attribute.Int("processed.count", result.ProcessedCount),
+		attribute.Int("batch.size", len(rawBatch.Records)),
+		attribute.Int("processed.count", len(batch.Records)),
 		attribute.Float64("latency.seconds", latency),
 	)
 
@@ -206,23 +215,21 @@ func (s *GRPC) Push(ctx context.Context, req *ingestv1.NormalizedLogBatch) (*ing
 	}, nil
 }
 
-// convertGRPCToCommonRequest converts gRPC request to common ingest request
-func (s *GRPC) convertGRPCToCommonRequest(grpcReq *ingestv1.NormalizedLogBatch) *ingest.CommonIngestRequest {
-	var records []ingest.CommonIngestRecord
+// convertGRPCToRawLogBatch converts gRPC request to raw log batch (same pattern as HTTP handlers)
+func (s *GRPC) convertGRPCToRawLogBatch(grpcReq *ingestv1.NormalizedLogBatch) *ingest.RawLogBatch {
+	var records []ingest.RawLog
 
 	for _, protoLog := range grpcReq.Records {
-		record := ingest.CommonIngestRecord{
-			Timestamp: protoLog.Timestamp.AsTime().UnixNano(),
+		record := ingest.RawLog{
+			Timestamp: protoLog.Timestamp.AsTime(),
 			Labels:    protoLog.Labels,
-			Message:   protoLog.Message,
-			Fields:    protoLog.Fields,
+			Payload:   protoLog.Message,
 		}
 
 		records = append(records, record)
 	}
 
-	return &ingest.CommonIngestRequest{
-		Protocol: "grpc",
-		Records:  records,
+	return &ingest.RawLogBatch{
+		Records: records,
 	}
 }

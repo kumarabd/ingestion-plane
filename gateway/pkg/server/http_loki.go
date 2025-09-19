@@ -40,76 +40,34 @@ func (s *HTTP) lokiHandler(c *gin.Context, start time.Time) {
 		return
 	}
 
-	// Convert Loki request to common ingest request
-	commonReq := s.convertLokiToCommonRequest(&lokiReq)
+	// Convert Loki request to standardized RawLogBatch
+	rawLogBatch := s.convertLokiToRawLogBatch(&lokiReq)
 
-	// Process using unified processor
-	processor := s.ingest.GetProcessor()
-	result, err := processor.ProcessRequest(ctx, commonReq)
-
-	if err != nil {
-		// Handle validation errors
-		if err.Error() == "empty batch" {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "empty batch"})
-			return
+	// Enqueue for background processing
+	if err := s.enqueueRawBatch(ctx, rawLogBatch); err != nil {
+		if s.metric != nil {
+			s.metric.IncIngestRejectedTotal("enqueue_timeout")
 		}
-		if err.Error() == "batch size exceeds maximum" {
-			c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "batch too large"})
-			return
-		}
-		// Other errors
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "processing failed"})
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "service busy, please retry"})
 		return
 	}
 
-	// Record metrics
+	// Record enqueue metrics
 	latency := time.Since(start).Seconds()
 	if s.metric != nil {
-		s.metric.AddHistogram("loki_push_latency_seconds", latency, map[string]string{
+		s.metric.AddHistogram("loki_enqueue_latency_seconds", latency, map[string]string{
 			"method": "POST",
 		})
-		s.metric.AddHistogram("loki_batch_size", float64(result.TotalReceived), map[string]string{
-			"method": "POST",
-		})
-		s.metric.IncrementCounter("loki_logs_processed_total", map[string]string{
+		s.metric.IncrementCounter("loki_logs_enqueued_total", map[string]string{
 			"method": "POST",
 			"status": "success",
 		})
 	}
 
-	// Return Loki-compatible response
+	// Return Loki-compatible response immediately
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
 	})
-}
-
-// convertLokiToCommonRequest converts Loki push request to common ingest request
-func (s *HTTP) convertLokiToCommonRequest(lokiReq *logproto.PushRequest) *ingest.CommonIngestRequest {
-	var records []ingest.CommonIngestRecord
-
-	for _, stream := range lokiReq.Streams {
-		for _, entry := range stream.Entries {
-			// Use the official logproto timestamp format
-			timestampNs := entry.Timestamp.UnixNano()
-
-			// Parse Loki labels string format: "{key1=\"value1\",key2=\"value2\"}"
-			labels := parseLokiLabels(stream.Labels)
-
-			record := ingest.CommonIngestRecord{
-				Timestamp: timestampNs,
-				Labels:    labels,
-				Message:   entry.Line,
-				Fields:    make(map[string]string),
-			}
-
-			records = append(records, record)
-		}
-	}
-
-	return &ingest.CommonIngestRequest{
-		Protocol: "loki",
-		Records:  records,
-	}
 }
 
 // parseLokiLabels parses Loki labels string format: "{key1=\"value1\",key2=\"value2\"}"
@@ -146,4 +104,29 @@ func parseLokiLabels(labelsStr string) map[string]string {
 	}
 
 	return labels
+}
+
+// convertLokiToRawLogBatch converts Loki push request to standardized RawLogBatch
+func (s *HTTP) convertLokiToRawLogBatch(lokiReq *logproto.PushRequest) ingest.RawLogBatch {
+	var records []ingest.RawLog
+
+	for _, stream := range lokiReq.Streams {
+		for _, entry := range stream.Entries {
+			// Parse Loki labels string format: "{key1=\"value1\",key2=\"value2\"}"
+			labels := parseLokiLabels(stream.Labels)
+
+			record := ingest.RawLog{
+				Timestamp:  entry.Timestamp,
+				Labels:     labels,
+				Payload:    entry.Line,
+				FormatHint: "text", // Loki entries are typically text
+			}
+
+			records = append(records, record)
+		}
+	}
+
+	return ingest.RawLogBatch{
+		Records: records,
+	}
 }
