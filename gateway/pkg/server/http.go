@@ -1,32 +1,61 @@
 package server
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kumarabd/gokit/logger"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
-	"github.com/kumarabd/ingestion-plane/gateway/pkg/service"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/ingest"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // HTTPConfig contains configuration for the HTTP server
 type HTTPConfig struct {
-	Host         string        `json:"host" yaml:"host" default:"0.0.0.0"`
-	Port         string        `json:"port" yaml:"port" default:"8080"`
-	ReadTimeout  time.Duration `json:"read_timeout" yaml:"read_timeout" default:"30s"`
-	WriteTimeout time.Duration `json:"write_timeout" yaml:"write_timeout" default:"30s"`
-	IdleTimeout  time.Duration `json:"idle_timeout" yaml:"idle_timeout" default:"60s"`
+	Host         string          `json:"host" yaml:"host" default:"0.0.0.0"`
+	Port         string          `json:"port" yaml:"port" default:"8080"`
+	ReadTimeout  time.Duration   `json:"read_timeout" yaml:"read_timeout" default:"30s"`
+	WriteTimeout time.Duration   `json:"write_timeout" yaml:"write_timeout" default:"30s"`
+	IdleTimeout  time.Duration   `json:"idle_timeout" yaml:"idle_timeout" default:"60s"`
+	Bounds       *BoundsConfig   `json:"bounds" yaml:"bounds"`
+	Pipeline     *PipelineConfig `json:"pipeline" yaml:"pipeline"`
+}
+
+// BoundsConfig contains bounds configuration for ingestion
+type BoundsConfig struct {
+	MaxBatch        int `json:"max_batch" yaml:"max_batch" default:"1000"`
+	MaxMessageBytes int `json:"max_message_bytes" yaml:"max_message_bytes" default:"65536"`
+}
+
+// PipelineConfig contains pipeline configuration
+type PipelineConfig struct {
+	EnqueueTimeout time.Duration `json:"enqueue_timeout" yaml:"enqueue_timeout" default:"5s"`
+}
+
+// RawLogBatch represents a batch of raw logs
+type RawLogBatch struct {
+	Records []ingest.RawLog `json:"records"`
+}
+
+// queuedItem represents an item queued for pipeline processing
+type queuedItem struct {
+	Ctx   context.Context
+	Batch RawLogBatch
 }
 
 // HTTP implements the Server interface for HTTP
 type HTTP struct {
 	handler   *gin.Engine
-	service   *service.Handler
+	ingest    *ingest.Handler
+	processor *ingest.Processor
 	log       *logger.Handler
 	metric    *metrics.Handler
 	config    *HTTPConfig
@@ -36,15 +65,29 @@ type HTTP struct {
 }
 
 // NewHTTP creates a new HTTP server instance
-func NewHTTP(config *HTTPConfig, service *service.Handler, l *logger.Handler, m *metrics.Handler) *HTTP {
+func NewHTTP(config *HTTPConfig, in *ingest.Handler, l *logger.Handler, m *metrics.Handler) *HTTP {
 	gin.SetMode(gin.ReleaseMode)
 
+	// Set up default configuration if not provided
+	if config.Bounds == nil {
+		config.Bounds = &BoundsConfig{
+			MaxBatch:        1000,
+			MaxMessageBytes: 65536,
+		}
+	}
+	if config.Pipeline == nil {
+		config.Pipeline = &PipelineConfig{
+			EnqueueTimeout: 5 * time.Second,
+		}
+	}
+
 	server := &HTTP{
-		handler: gin.New(),
-		service: service,
-		log:     l,
-		metric:  m,
-		config:  config,
+		handler:   gin.New(),
+		ingest:    in,
+		processor: in.GetProcessor(),
+		log:       l,
+		metric:    m,
+		config:    config,
 	}
 
 	// Add global middleware
@@ -53,7 +96,6 @@ func NewHTTP(config *HTTPConfig, service *service.Handler, l *logger.Handler, m 
 	server.handler.Use(server.corsMiddleware())
 
 	// Routes will be set up in setupRoutes()
-
 	// Add HTTP-specific routes
 	server.setupRoutes()
 
@@ -125,21 +167,42 @@ func (s *HTTP) GetHandler() *gin.Engine {
 
 // setupRoutes adds HTTP-specific routes
 func (s *HTTP) setupRoutes() {
-	// Minimal endpoints as specified
-	// /v1/ingest (batch)
+	// Multi-protocol ingestion endpoints
+	// /v1/ingest (unified endpoint - auto-detects protocol)
 	s.handler.POST("/v1/ingest", s.ingestHandler)
 
-	// /healthz
-	s.handler.GET("/healthz", s.healthHandler)
+	// Protocol-specific endpoints for explicit routing
+	s.handler.POST("/loki/api/v1/push", func(c *gin.Context) {
+		s.lokiHandler(c, time.Now())
+	})
+	s.handler.POST("/api/v1/logs", func(c *gin.Context) {
+		s.jsonHandler(c, time.Now())
+	})
+	s.handler.POST("/v1/ingest/otlp", func(c *gin.Context) {
+		s.otlpHandler(c, time.Now())
+	})
+	s.handler.POST("/v1/ingest/json", func(c *gin.Context) {
+		s.jsonHandler(c, time.Now())
+	})
 
-	// /metrics
+	// Health and metrics endpoints
+	s.handler.GET("/healthz", s.healthHandler)
 	s.handler.GET("/metrics", s.metricsHandler)
 }
 
-// ingestHandler handles batch log ingestion
-func (s *HTTP) ingestHandler(c *gin.Context) {
-	otlpHandler := s.service.GetOTLPHandler()
-	otlpHandler.HandleOTLPHTTP(c)
+// getBodyReader returns a reader for the request body, handling gzip decompression if needed
+func getBodyReader(r *http.Request) (io.ReadCloser, error) {
+	if r.Body == nil {
+		return io.NopCloser(bytes.NewReader(nil)), nil
+	}
+	if strings.Contains(strings.ToLower(r.Header.Get("Content-Encoding")), "gzip") {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		return gz, nil
+	}
+	return r.Body, nil
 }
 
 // healthHandler handles health check endpoint

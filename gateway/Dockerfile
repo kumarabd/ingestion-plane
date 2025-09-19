@@ -2,7 +2,7 @@ ARG app_name
 ARG app_version
 ARG admin_token
 
-FROM golang:1.15 as build-env
+FROM golang:1.21 as build-env
 WORKDIR /github.com/kumarabd/ingestion-plane/gateway
 COPY go.mod go.sum ./
 RUN go mod download
@@ -14,9 +14,8 @@ COPY pkg/ pkg/
 RUN GO111MODULE=on go build -ldflags "-w -s -X github.com/kumarabd/ingestion-plane/gateway/internal/config.ApplicationName=$app_name -X github.com/kumarabd/ingestion-plane/gateway/internal/config.ApplicationVersion=$app_version" -a -o service cmd/main.go
 
 FROM gcr.io/distroless/base:nonroot-amd64
-COPY internal/config/config.yaml internal/config/config.yaml
 ENV DISTRO="debian"
 ENV GOARCH="amd64"
-WORKDIR /$HOME
-COPY --from=build-env /github.com/kumarabd/ingestion-plane/gateway .
+WORKDIR /app
+COPY --from=build-env /github.com/kumarabd/ingestion-plane/gateway/service .
 ENTRYPOINT ["./service"]

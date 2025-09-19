@@ -402,12 +402,6 @@ func (f *Forwarder) convertToLokiFormat(logs []*LogEntry) map[string]interface{}
 		// Create stream key from labels
 		streamKey := f.createStreamKey(log.Labels)
 
-		// Create Loki log entry
-		lokiEntry := map[string]interface{}{
-			"ts":   fmt.Sprintf("%d", log.Timestamp),
-			"line": log.Message,
-		}
-
 		// Add fields as additional labels for Loki
 		labels := make(map[string]string)
 		for k, v := range log.Labels {

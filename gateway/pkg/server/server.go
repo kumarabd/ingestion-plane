@@ -3,7 +3,7 @@ package server
 import (
 	"github.com/kumarabd/gokit/logger"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
-	"github.com/kumarabd/ingestion-plane/gateway/pkg/service"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/ingest"
 )
 
 // Type represents the type of server to create
@@ -29,17 +29,17 @@ type Handler struct {
 }
 
 // New creates a new server handler
-func New(l *logger.Handler, m *metrics.Handler, config *Config, service *service.Handler) (*Handler, error) {
+func New(l *logger.Handler, m *metrics.Handler, config *Config, ingest *ingest.Handler) (*Handler, error) {
 	// Create HTTP server if configured
 	var httpServer *HTTP
 	if config.HTTP != nil {
-		httpServer = NewHTTP(config.HTTP, service, l, m)
+		httpServer = NewHTTP(config.HTTP, ingest, l, m)
 	}
 
 	// Create gRPC server if configured
 	var grpcServer *GRPC
 	if config.GRPC != nil {
-		grpcServer = NewGRPC(config.GRPC, service, l, m)
+		grpcServer = NewGRPC(config.GRPC, ingest, l, m)
 	}
 
 	return &Handler{

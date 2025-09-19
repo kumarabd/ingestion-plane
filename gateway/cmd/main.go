@@ -7,9 +7,8 @@ import (
 	"github.com/kumarabd/gokit/logger"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/config"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
-	"github.com/kumarabd/ingestion-plane/gateway/pkg/cache"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/ingest"
 	"github.com/kumarabd/ingestion-plane/gateway/pkg/server"
-	"github.com/kumarabd/ingestion-plane/gateway/pkg/service"
 )
 
 // main is the entry point of the application
@@ -37,23 +36,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize in-memory cache layer
-	cacheHandler, err := cache.New()
+	// Initialize a new ingest handler with configuration and emitter
+	ingestHandler, err := ingest.NewHandler(configHandler.OTLP, configHandler.Emitter, log, metricsHandler)
 	if err != nil {
-		log.Error().Err(err).Msg("cache initialization failed")
+		log.Error().Err(err).Msg("ingest initialization failed")
 		os.Exit(1)
 	}
 
-	// Initialize a new service with the logger, metrics handler, data layer, and service configuration
-	serviceHandler, err := service.New(log, metricsHandler, cacheHandler, configHandler.Service)
-	if err != nil {
-		log.Error().Err(err).Msg("service initialization failed")
+	// Start the ingest handler (required for forwarder)
+	if err := ingestHandler.Start(); err != nil {
+		log.Error().Err(err).Msg("ingest handler start failed")
 		os.Exit(1)
 	}
-	log.Info().Msg("service initialized")
+	log.Info().Msg("ingest initialized")
 
 	// Create server instance
-	srv, err := server.New(log, metricsHandler, configHandler.Server, serviceHandler)
+	srv, err := server.New(log, metricsHandler, configHandler.Server, ingestHandler)
 	if err != nil {
 		log.Error().Err(err).Msg("server initialization failed")
 		os.Exit(1)
@@ -65,4 +63,10 @@ func main() {
 	srv.Start(ch)
 	<-ch
 	log.Info().Msg("server stopped")
+
+	// Stop the ingest handler gracefully
+	if err := ingestHandler.Stop(); err != nil {
+		log.Error().Err(err).Msg("ingest handler stop failed")
+	}
+	log.Info().Msg("ingest handler stopped")
 }

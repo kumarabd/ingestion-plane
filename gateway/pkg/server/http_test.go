@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kumarabd/gokit/logger"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
-	"github.com/kumarabd/ingestion-plane/gateway/pkg/service"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/ingest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,8 +22,8 @@ func TestHTTPEndpoints(t *testing.T) {
 	log, _ := logger.New("test", logger.Options{Format: logger.JSONLogFormat})
 	metric, _ := metrics.New("test")
 
-	// Create mock service
-	serviceHandler := &service.Handler{}
+	// Create mock ingest handler
+	ingestHandler := &ingest.Handler{}
 
 	// Create HTTP server
 	config := &HTTPConfig{
@@ -31,7 +31,7 @@ func TestHTTPEndpoints(t *testing.T) {
 		Port: "8080",
 	}
 
-	server := NewHTTP(config, serviceHandler, log, metric)
+	server := NewHTTP(config, ingestHandler, log, metric)
 
 	t.Run("health endpoint", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/healthz", nil)
