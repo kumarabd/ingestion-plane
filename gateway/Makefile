@@ -2,7 +2,7 @@
 
 # Variables
 CONTRACTS_DIR := ../contracts
-GENERATED_DIR := generated
+GENERATED_DIR := ../contracts
 PROTOC := protoc
 PROTOC_GO_PLUGIN := protoc-gen-go
 PROTOC_GO_GRPC_PLUGIN := protoc-gen-go-grpc

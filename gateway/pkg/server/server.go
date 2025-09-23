@@ -3,7 +3,11 @@ package server
 import (
 	"github.com/kumarabd/gokit/logger"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/indexfeed"
 	"github.com/kumarabd/ingestion-plane/gateway/pkg/ingest"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/miner"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/sampler"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/sink/loki"
 )
 
 // Type represents the type of server to create
@@ -29,23 +33,23 @@ type Handler struct {
 }
 
 // New creates a new server handler
-func New(l *logger.Handler, m *metrics.Handler, config *Config, ingest *ingest.Handler) (*Handler, error) {
+func New(l *logger.Handler, m *metrics.Handler, serverConfig *Config, minerConfig *miner.Config, samplerConfig *sampler.SamplerConfig, enforcementConfig *sampler.EnforcementConfig, lokiConfig *loki.LokiConfig, indexFeedConfig *indexfeed.Config, ingest *ingest.Handler) (*Handler, error) {
 	// Create HTTP server if configured
 	var httpServer *HTTP
-	if config.HTTP != nil {
-		httpServer = NewHTTP(config.HTTP, ingest, l, m)
+	if serverConfig.HTTP != nil {
+		httpServer = NewHTTP(serverConfig.HTTP, minerConfig, samplerConfig, enforcementConfig, lokiConfig, indexFeedConfig, ingest, l, m)
 	}
 
 	// Create gRPC server if configured
 	var grpcServer *GRPC
-	if config.GRPC != nil {
-		grpcServer = NewGRPC(config.GRPC, ingest, l, m)
+	if serverConfig.GRPC != nil {
+		grpcServer = NewGRPC(serverConfig.GRPC, ingest, l, m)
 	}
 
 	return &Handler{
 		HTTP:   httpServer,
 		GRPC:   grpcServer,
-		config: config,
+		config: serverConfig,
 		log:    l,
 	}, nil
 }

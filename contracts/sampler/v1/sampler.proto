@@ -5,47 +5,110 @@ package sampler.v1;
 option go_package = "github.com/kumarabd/ingestion-plane/contracts/sampler/v1;samplerv1";
 
 import "google/protobuf/timestamp.proto";
-import "common/v1/common.proto";
 
-// Decision request combines miner output + key labels used for policy.
+// SamplerService decides, per log record, whether to KEEP or SUPPRESS based on
+// policy, rolling counters, novelty, and spike detection. It returns one decision
+// per input record, aligned by record_index.
+
+// ------------------------- Service -------------------------
+
+service SamplerService {
+  rpc Decide      (DecisionRequest)       returns (Decision);
+  rpc DecideBatch (DecisionBatchRequest)  returns (DecisionBatchResponse);
+}
+
+// ------------------------- Request -------------------------
+
 message DecisionRequest {
-  google.protobuf.Timestamp timestamp = 1;
+  // Index of the input record in the caller's batch (explicit mapping).
+  int32 record_index = 1;
 
-  // Keyed labels used in policy decisions (e.g., service, env, severity, namespace).
-  map<string, string> labels = 2;
+  // Event time of the log.
+  google.protobuf.Timestamp timestamp = 2;
 
-  // Template identity for this line.
-  string template_id = 3;
+  // Key labels used for policy & bucketing (e.g., service, env, severity, namespace).
+  map<string, string> labels = 3;
 
-  // Normalized severity also provided explicitly.
-  common.v1.Severity severity = 4;
+  // Template identity produced by the Miner.
+  string template_id = 4;
+
+  // Normalized severity for convenience (also expected in labels["severity"]).
+  Severity severity = 5;
+
+  // Optional multi-tenant routing key (may be empty if single-tenant).
+  string tenant_id = 6;
 }
 
-// Decision result for a single line.
+// ------------------------- Core types -------------------------
+
+// Canonical severities understood by policies.
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_DEBUG       = 1;
+  SEVERITY_INFO        = 2;
+  SEVERITY_WARN        = 3;
+  SEVERITY_ERROR       = 4;
+  SEVERITY_FATAL       = 5;
+}
+
+// The action to take for this record.
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  ACTION_KEEP        = 1;
+  ACTION_SUPPRESS    = 2;
+}
+
+// First-match-wins reason from the policy ladder.
+enum KeepReason {
+  KEEP_REASON_UNSPECIFIED = 0;
+  KEEP_REASON_SEVERITY    = 1; // error/fatal floors
+  KEEP_REASON_NOVEL       = 2; // new template in novelty window
+  KEEP_REASON_SPIKE       = 3; // spike-aware relaxation
+  KEEP_REASON_WARMUP      = 4; // keep-first-N
+  KEEP_REASON_LOG2        = 5; // 1,2,4,8,16...
+  KEEP_REASON_STEADYK     = 6; // every Kth
+  KEEP_REASON_BUDGET      = 7; // budget guard adjustment
+}
+
+// Rolling counters used for transparency and UI.
+message WindowCounts {
+  uint64 count_10m = 1;
+  uint64 count_1h  = 2;
+  uint64 count_24h = 3;
+}
+
+// ------------------------- Response -------------------------
+
 message Decision {
-  common.v1.Action action = 1;
+  // Echo of the input record_index for alignment.
+  int32 record_index = 1;
 
-  // If kept, why it was kept (policy ladder reason).
-  common.v1.KeepReason keep_reason = 2;
+  // Action to take.
+  Action action = 2;
 
-  // Rolling counters (for transparency & UI).
-  common.v1.WindowCounts counters = 3;
+  // Why it was kept (or which rule would have applied if suppressed).
+  KeepReason keep_reason = 3;
 
-  // Optional debug notes (not for hot path parsing).
-  string note = 4;
+  // Rolling counts for this (template_id, service, env, severity, ...).
+  WindowCounts counters = 4;
+
+  // Effective sampling rate (1 = keep-all; 10 = keep 1 in 10).
+  // This is advisory metadata for UIs and audits.
+  uint32 sample_rate = 5;
+
+  // Policy/version identifier that produced the decision.
+  string policy_version = 6;
+
+  // Optional human-readable note for debugging (not for parsing).
+  string note = 7;
 }
 
-// Batch version for throughput.
+// ------------------------- Batch wrappers -------------------------
+
 message DecisionBatchRequest {
   repeated DecisionRequest items = 1;
 }
 
 message DecisionBatchResponse {
   repeated Decision items = 1;
-}
-
-// Sampler API - called by the gateway after mining.
-service SamplerService {
-  rpc DecideOne (DecisionRequest) returns (Decision);
-  rpc DecideBatch (DecisionBatchRequest) returns (DecisionBatchResponse);
 }

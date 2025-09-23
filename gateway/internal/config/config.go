@@ -6,9 +6,12 @@ import (
 
 	config_pkg "github.com/kumarabd/gokit/config"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
-	"github.com/kumarabd/ingestion-plane/gateway/pkg/forwarder"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/indexfeed"
 	"github.com/kumarabd/ingestion-plane/gateway/pkg/ingest"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/miner"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/sampler"
 	"github.com/kumarabd/ingestion-plane/gateway/pkg/server"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/sink/loki"
 )
 
 var (
@@ -17,10 +20,15 @@ var (
 )
 
 type Config struct {
-	Server  *server.Config        `json:"server,omitempty" yaml:"server,omitempty"`
-	OTLP    *ingest.Config        `json:"otlp" yaml:"otlp"`
-	Emitter *ingest.EmitterConfig `json:"emitter" yaml:"emitter"`
-	Metrics *metrics.Options      `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	Server      *server.Config             `json:"server,omitempty" yaml:"server,omitempty"`
+	OTLP        *ingest.Config             `json:"otlp" yaml:"otlp"`
+	Emitter     *ingest.EmitterConfig      `json:"emitter" yaml:"emitter"`
+	Miner       *miner.Config              `json:"miner" yaml:"miner"`
+	Sampler     *sampler.SamplerConfig     `json:"sampler" yaml:"sampler"`
+	Enforcement *sampler.EnforcementConfig `json:"enforcement" yaml:"enforcement"`
+	Loki        *loki.LokiConfig           `json:"loki" yaml:"loki"`
+	IndexFeed   *indexfeed.Config          `json:"indexfeed" yaml:"indexfeed"`
+	Metrics     *metrics.Options           `json:"metrics,omitempty" yaml:"metrics,omitempty"`
 	//Traces  *traces.Options  `json:"traces,omitempty" yaml:"traces,omitempty"`
 }
 
@@ -49,29 +57,62 @@ func New() (*Config, error) {
 			AllowedSchemas: []string{"JSON", "LOGFMT", "TEXT"},
 		},
 		Emitter: &ingest.EmitterConfig{
-			OutputType:    "forwarder", // stdout, kafka, grpc, forwarder
-			BatchSize:     100,         // Batch size for output
-			FlushInterval: 5,           // Flush interval in seconds
-			Forwarder: &forwarder.Config{
-				ShadowMode:    true,  // Enable shadow mode (no drops)
-				MaxRetries:    3,     // Max retry attempts
-				RetryDelay:    1,     // 1s delay between retries
-				Timeout:       10,    // 10s request timeout
-				BatchSize:     100,   // Batch size for forwarding
-				FlushInterval: 5,     // 5s flush interval
-				MaxQueueSize:  10000, // Max queue size
-				Miner: forwarder.MinerConfig{
-					Enabled:  true,
-					Endpoint: "http://localhost:8001/api/v1/logs",
-					Timeout:  5, // 5s timeout
-				},
-				Loki: forwarder.LokiConfig{
-					Enabled:  true,
-					Endpoint: "http://localhost:3100/loki/api/v1/push",
-					Timeout:  5, // 5s timeout
-					TenantID: "",
+			OutputType:    "stdout", // stdout, kafka, grpc
+			BatchSize:     100,      // Batch size for output
+			FlushInterval: 5,        // Flush interval in seconds
+		},
+		Miner: &miner.Config{
+			Addr:           "dns:///miner:9000", // Miner gRPC endpoint
+			Timeout:        200 * time.Millisecond,
+			MaxBatch:       500,
+			MaxBatchWait:   25 * time.Millisecond,
+			MaxRetries:     2,
+			RetryBaseDelay: 20 * time.Millisecond,
+			ShadowOnly:     true, // Shadow mode - don't drop logs yet
+		},
+		Sampler: &sampler.SamplerConfig{
+			Addr:         "sampler:9000", // Sampler gRPC endpoint
+			Timeout:      100 * time.Millisecond,
+			MaxBatch:     1000,
+			MaxBatchWait: 25 * time.Millisecond,
+		},
+		Enforcement: &sampler.EnforcementConfig{
+			Debug: true,
+			Info:  false,
+			Warn:  false,
+			Error: false,
+			ByNamespace: map[string]bool{
+				"staging": true,
+			},
+		},
+		Loki: &loki.LokiConfig{
+			Addr:             "http://loki:3100",
+			FlushInterval:    400 * time.Millisecond,
+			MaxBatchBytes:    1000000, // 1MB
+			MaxBatchEntries:  5000,
+			MaxBufferBytes:   268435456, // 256MB
+			MaxBufferEntries: 1000000,
+			RequestTimeout:   5 * time.Second,
+			Retry: loki.RetryConfig{
+				Enabled:        true,
+				InitialBackoff: 200 * time.Millisecond,
+				MaxBackoff:     5 * time.Second,
+			},
+			DropPolicy: loki.DropPolicy{
+				DebugFirst:  true,
+				ProtectInfo: true,
+			},
+			Labels: loki.LabelConfig{
+				Static: map[string]string{
+					"gateway": "true",
 				},
 			},
+		},
+		IndexFeed: &indexfeed.Config{
+			Addr:           "dns:///indexfeed:9000",
+			Timeout:        200 * time.Millisecond,
+			MaxRetries:     2,
+			RetryBaseDelay: 20 * time.Millisecond,
 		},
 		Metrics: &metrics.Options{},
 	}

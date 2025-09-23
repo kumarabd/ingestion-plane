@@ -25,8 +25,6 @@ const (
 // MinerServiceClient is the client API for MinerService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// Miner API - can be in-proc or a network service.
 type MinerServiceClient interface {
 	Analyze(ctx context.Context, in *AnalyzeRequest, opts ...grpc.CallOption) (*AnalyzeResponse, error)
 }
@@ -52,8 +50,6 @@ func (c *minerServiceClient) Analyze(ctx context.Context, in *AnalyzeRequest, op
 // MinerServiceServer is the server API for MinerService service.
 // All implementations must embed UnimplementedMinerServiceServer
 // for forward compatibility.
-//
-// Miner API - can be in-proc or a network service.
 type MinerServiceServer interface {
 	Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error)
 	mustEmbedUnimplementedMinerServiceServer()

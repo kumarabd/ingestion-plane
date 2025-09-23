@@ -43,7 +43,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start the ingest handler (required for forwarder)
+	// Start the ingest handler
 	if err := ingestHandler.Start(); err != nil {
 		log.Error().Err(err).Msg("ingest handler start failed")
 		os.Exit(1)
@@ -51,7 +51,7 @@ func main() {
 	log.Info().Msg("ingest initialized")
 
 	// Create server instance
-	srv, err := server.New(log, metricsHandler, configHandler.Server, ingestHandler)
+	srv, err := server.New(log, metricsHandler, configHandler.Server, configHandler.Miner, configHandler.Sampler, configHandler.Enforcement, configHandler.Loki, configHandler.IndexFeed, ingestHandler)
 	if err != nil {
 		log.Error().Err(err).Msg("server initialization failed")
 		os.Exit(1)

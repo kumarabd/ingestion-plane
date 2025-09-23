@@ -31,7 +31,7 @@ func TestHTTPEndpoints(t *testing.T) {
 		Port: "8080",
 	}
 
-	server := NewHTTP(config, ingestHandler, log, metric)
+	server := NewHTTP(config, nil, nil, nil, nil, nil, ingestHandler, log, metric)
 
 	t.Run("health endpoint", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/healthz", nil)

@@ -2,12 +2,16 @@ package ingest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/kumarabd/gokit/logger"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/logtypes"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Config contains configuration for log ingestion
@@ -22,27 +26,9 @@ type Config struct {
 	AllowedSchemas  []string      `json:"allowed_schemas" yaml:"allowed_schemas" default:"JSON,LOGFMT,TEXT"` // Allowed schema types
 }
 
-// RedactionReport contains information about PII redaction applied to a log
-type RedactionReport struct {
-	Applied bool     `json:"applied"`
-	Rules   []string `json:"rules"`
-	Count   int      `json:"count"`
-}
-
 // NormalizedLogEmitter interface for emitting normalized logs
 type NormalizedLogEmitter interface {
-	EmitNormalizedLogBatch(ctx context.Context, batch *NormalizedLogBatch) error
-}
-
-// NormalizedLog represents the normalized log structure
-type NormalizedLog struct {
-	Timestamp time.Time         `json:"timestamp"`
-	Labels    map[string]string `json:"labels"`
-	Message   string            `json:"message"`
-	Schema    string            `json:"schema"`
-	Sanitized bool              `json:"sanitized"`
-	Truncated bool              `json:"truncated"`
-	Redaction RedactionReport   `json:"redaction"`
+	EmitNormalizedLogBatch(ctx context.Context, batch *logtypes.NormalizedLogBatch) error
 }
 
 // RawLog represents a single raw log line as received from clients.
@@ -56,11 +42,6 @@ type RawLog struct {
 // RawLogBatch is a batch of raw logs posted to /v1/ingest in JSON mode.
 type RawLogBatch struct {
 	Records []RawLog `json:"records"` // required; must not be empty
-}
-
-// NormalizedLogBatch is a batch of normalized logs
-type NormalizedLogBatch struct {
-	Records []NormalizedLog `json:"records"` // required; must not be empty
 }
 
 // Handler provides access to configuration and emitter
@@ -96,26 +77,26 @@ func (h *Handler) GetEmitter() NormalizedLogEmitter {
 	return h.emitter
 }
 
-// Start starts the handler's emitter (required for forwarder)
+// Start starts the handler's emitter
 func (h *Handler) Start() error {
 	return h.emitter.Start()
 }
 
-// Stop stops the handler's emitter (required for forwarder)
+// Stop stops the handler's emitter
 func (h *Handler) Stop() error {
 	return h.emitter.Stop()
 }
 
 // NormalizeAndRedactBatch processes a raw log batch by normalizing and redacting it
-func (h *Handler) NormalizeAndRedactBatch(ctx context.Context, batch *RawLogBatch, log *logger.Handler, metric *metrics.Handler) (*NormalizedLogBatch, error) {
+func (h *Handler) NormalizeAndRedactBatch(ctx context.Context, batch *RawLogBatch, log *logger.Handler, metric *metrics.Handler) (*logtypes.NormalizedLogBatch, error) {
 	start := time.Now()
 	success := true
 
 	if batch == nil || len(batch.Records) == 0 {
-		return &NormalizedLogBatch{Records: []NormalizedLog{}}, nil
+		return &logtypes.NormalizedLogBatch{Records: []logtypes.NormalizedLog{}}, nil
 	}
 
-	var normalizedRecords []NormalizedLog
+	var normalizedRecords []logtypes.NormalizedLog
 
 	// Process each RawLog in the batch
 	for _, rawLog := range batch.Records {
@@ -152,23 +133,94 @@ func (h *Handler) NormalizeAndRedactBatch(ctx context.Context, batch *RawLogBatc
 			Msg("Processed raw batch")
 	}
 
-	return &NormalizedLogBatch{Records: normalizedRecords}, nil
+	return &logtypes.NormalizedLogBatch{Records: normalizedRecords}, nil
 }
 
-// determineSchema determines the schema based on format hint or payload content
-func (h *Handler) determineSchema(payload, formatHint string) string {
-	// Use format hint if provided
-	if formatHint != "" {
-		switch strings.ToUpper(formatHint) {
-		case "JSON":
+// DetermineSchema determines the schema type based on message content
+func DetermineSchema(message string, fields map[string]string) string {
+	trimmed := strings.TrimSpace(message)
+
+	// If payload starts with { → attempt json.Unmarshal
+	if strings.HasPrefix(trimmed, "{") {
+		var jsonData interface{}
+		if err := json.Unmarshal([]byte(trimmed), &jsonData); err == nil {
 			return "JSON"
-		case "LOGFMT":
-			return "LOGFMT"
-		case "TEXT":
-			return "TEXT"
 		}
 	}
 
-	// Auto-detect using shared utility function
-	return DetermineSchema(payload, nil)
+	// If it contains = pairs → mark as logfmt
+	if containsLogfmtPairs(message) {
+		return "LOGFMT"
+	}
+
+	// Else → treat as text
+	return "TEXT"
+}
+
+// containsLogfmtPairs checks if the message contains key=value pairs typical of logfmt
+func containsLogfmtPairs(message string) bool {
+	// Look for patterns like key=value with optional spaces
+	logfmtPattern := regexp.MustCompile(`\b\w+\s*=\s*[^\s=]+`)
+	matches := logfmtPattern.FindAllString(message, -1)
+
+	// Consider it logfmt if we find at least one key=value pair
+	// and it's not JSON (doesn't start with {)
+	if len(matches) > 0 && !strings.HasPrefix(strings.TrimSpace(message), "{") {
+		return true
+	}
+
+	return false
+}
+
+// NormalizeMessage normalizes a message by enforcing size cap, canonicalizing whitespace, and normalizing UTF-8
+func NormalizeMessage(message string, maxBytes int) (string, bool) {
+	// Enforce size cap
+	truncated := false
+	if len(message) > maxBytes {
+		message = message[:maxBytes]
+		truncated = true
+	}
+
+	// Canonicalize whitespace (collapse multiple spaces)
+	message = canonicalizeWhitespace(message)
+
+	// Normalize UTF-8 to NFC form
+	message = norm.NFC.String(message)
+
+	return message, truncated
+}
+
+// canonicalizeWhitespace collapses multiple whitespace characters into single spaces
+func canonicalizeWhitespace(s string) string {
+	whitespacePattern := regexp.MustCompile(`\s+`)
+	return strings.TrimSpace(whitespacePattern.ReplaceAllString(s, " "))
+}
+
+// NormalizeRawLog normalizes a single RawLog into a NormalizedLog
+func NormalizeRawLog(rawLog RawLog, maxMessageBytes int) logtypes.NormalizedLog {
+	// Detect schema
+	schema := DetermineSchema(rawLog.Payload, nil)
+
+	// Normalize message
+	normalizedMessage, truncated := NormalizeMessage(rawLog.Payload, maxMessageBytes)
+
+	// Apply PII redaction
+	redactor := NewPIIRedactor()
+	redactedMessage, redactionReport := redactor.RedactMessage(normalizedMessage)
+
+	// Use provided timestamp or current time if not provided
+	timestamp := rawLog.Timestamp
+	if timestamp.IsZero() {
+		timestamp = time.Now()
+	}
+
+	return logtypes.NormalizedLog{
+		Timestamp: timestamp,
+		Labels:    rawLog.Labels,
+		Message:   redactedMessage,
+		Schema:    schema,
+		Sanitized: redactionReport.Applied, // Mark as sanitized if redaction was applied
+		Truncated: truncated,
+		Redaction: redactionReport,
+	}
 }

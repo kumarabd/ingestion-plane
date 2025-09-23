@@ -7,42 +7,77 @@ option go_package = "github.com/kumarabd/ingestion-plane/contracts/miner/v1;mine
 import "google/protobuf/timestamp.proto";
 import "ingest/v1/ingest.proto";
 
-// Request to analyze normalized logs (usually batched).
+// MinerService analyzes normalized, redacted logs and assigns canonical templates.
+// It returns one authoritative result per input record, plus optional alternate
+// candidates ("shadows") for drift analysis and semantic pre-indexing.
+
+service MinerService {
+  rpc Analyze (AnalyzeRequest) returns (AnalyzeResponse);
+}
+
+// ---------- Request ----------
+
 message AnalyzeRequest {
+  // Normalized, PII-safe records from the gateway.
   repeated ingest.v1.NormalizedLog records = 1;
 }
 
-// Result for each input record (1:1 alignment with request.records).
+// ---------- Core types ----------
+
+enum Provenance {
+  PROVENANCE_UNSPECIFIED = 0;
+  PROVENANCE_CACHE       = 1; // found in template memory
+  PROVENANCE_HEURISTIC   = 2; // grouping-tree / non-LLM heuristic
+  PROVENANCE_LIBRELOG    = 3; // LibreLog / LLM-assisted synthesis
+  PROVENANCE_FALLBACK    = 4; // masked-preview → regex fallback
+}
+
+// Canonical template assignment for a single input record.
 message TemplateResult {
-  // Stable identifier (hash of canonical template).
-  string template_id = 1;
+  // Index of the input record in AnalyzeRequest.records (explicit mapping).
+  int32 record_index = 1;
 
-  // Canonical masked template text (post-PII redaction).
-  string template = 2;
+  // Stable identifier for the template (e.g., hash of canonical text).
+  string template_id = 2;
 
-  // Pre-built regex derived from placeholders, for LogQL generation.
-  string regex = 3;
+  // Canonical masked template text (post-PII).
+  string template = 3;
 
-  // Optional group signature / bucket id (e.g., token-type sequence).
-  string group_signature = 4;
+  // Regex derived from placeholders; used by the planner to build LogQL.
+  string regex = 4;
 
-  // Confidence (0..1) for the assignment.
-  float confidence = 5;
+  // Optional grouping signature / bucket id (token-type sequence, etc.).
+  string group_signature = 5;
 
-  // First/last time we saw this template (as known by the miner).
-  google.protobuf.Timestamp first_seen = 6;
-  google.protobuf.Timestamp last_seen  = 7;
+  // Confidence (0..1) for this assignment.
+  float confidence = 6;
 
-  // Optional bounded exemplars (very small).
-  repeated string examples = 8;
+  // Provenance of this result (cache, heuristic, librelog, fallback).
+  Provenance provenance = 7;
+
+  // Template lifecycle hints (as known by the miner).
+  google.protobuf.Timestamp first_seen = 8;
+  google.protobuf.Timestamp last_seen  = 9;
+
+  // Small, bounded exemplars for UI/analysis (already redacted).
+  repeated string examples = 10;
 }
 
-// Batch response; results[i] corresponds to request.records[i].
+// Non-authoritative alternates considered for a given input record.
+message MinerShadow {
+  // Index of the input record this shadow set refers to.
+  int32 record_index = 1;
+
+  // Ranked alternate candidates (same shape as TemplateResult).
+  repeated TemplateResult candidates = 2;
+}
+
+// ---------- Response ----------
+
 message AnalyzeResponse {
+  // Authoritative, 1:1 with AnalyzeRequest.records via record_index.
   repeated TemplateResult results = 1;
-}
 
-// Miner API - can be in-proc or a network service.
-service MinerService {
-  rpc Analyze (AnalyzeRequest) returns (AnalyzeResponse);
+  // Optional alternates for drift analysis / semantic pre-indexing.
+  repeated MinerShadow shadows = 2;
 }

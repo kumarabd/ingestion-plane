@@ -14,7 +14,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kumarabd/gokit/logger"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/indexfeed"
 	"github.com/kumarabd/ingestion-plane/gateway/pkg/ingest"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/logtypes"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/miner"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/sampler"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/sink/loki"
+	"github.com/kumarabd/ingestion-plane/gateway/pkg/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -64,10 +70,34 @@ type HTTP struct {
 	workerCtx    context.Context
 	workerCancel context.CancelFunc
 	workerWg     sync.WaitGroup
+
+	// Miner components
+	minerConfig   *miner.Config
+	minerClient   miner.Client
+	minerBatcher  *miner.Batcher
+	minerInputCh  chan logtypes.NormalizedLog
+	minerOutputCh chan types.MinedRecord
+
+	// Sampler components
+	samplerConfig             *sampler.SamplerConfig
+	enforcementConfig         *sampler.EnforcementConfig
+	samplerClient             sampler.SamplerClient
+	samplerBatcher            *sampler.SamplerBatcher
+	samplerInputCh            chan *sampler.PipelineRecord
+	samplerOutputKeptCh       chan *sampler.PipelineRecord
+	samplerOutputSuppressedCh chan *sampler.PipelineRecord
+
+	// Loki sink components
+	lokiConfig *loki.LokiConfig
+	lokiSink   *loki.LokiSink
+
+	// Index-Feed producer components
+	indexFeedConfig *indexfeed.Config
+	indexFeedClient indexfeed.Client
 }
 
 // NewHTTP creates a new HTTP server instance
-func NewHTTP(config *HTTPConfig, in *ingest.Handler, l *logger.Handler, m *metrics.Handler) *HTTP {
+func NewHTTP(config *HTTPConfig, minerConfig *miner.Config, samplerConfig *sampler.SamplerConfig, enforcementConfig *sampler.EnforcementConfig, lokiConfig *loki.LokiConfig, indexFeedConfig *indexfeed.Config, in *ingest.Handler, l *logger.Handler, m *metrics.Handler) *HTTP {
 	gin.SetMode(gin.ReleaseMode)
 
 	// Set up default configuration if not provided
@@ -87,14 +117,24 @@ func NewHTTP(config *HTTPConfig, in *ingest.Handler, l *logger.Handler, m *metri
 	workerCtx, workerCancel := context.WithCancel(context.Background())
 
 	server := &HTTP{
-		handler:      gin.New(),
-		ingest:       in,
-		log:          l,
-		metric:       m,
-		config:       config,
-		rawQueue:     make(chan queuedItem, config.Bounds.MaxBatch*2), // Buffer for 2x max batch size
-		workerCtx:    workerCtx,
-		workerCancel: workerCancel,
+		handler:                   gin.New(),
+		ingest:                    in,
+		log:                       l,
+		metric:                    m,
+		config:                    config,
+		minerConfig:               minerConfig,
+		samplerConfig:             samplerConfig,
+		enforcementConfig:         enforcementConfig,
+		lokiConfig:                lokiConfig,
+		indexFeedConfig:           indexFeedConfig,
+		rawQueue:                  make(chan queuedItem, config.Bounds.MaxBatch*2), // Buffer for 2x max batch size
+		workerCtx:                 workerCtx,
+		workerCancel:              workerCancel,
+		minerInputCh:              make(chan logtypes.NormalizedLog, 4096),  // Bounded channel for miner input
+		minerOutputCh:             make(chan types.MinedRecord, 4096),       // Bounded channel for miner output
+		samplerInputCh:            make(chan *sampler.PipelineRecord, 4096), // Bounded channel for sampler input
+		samplerOutputKeptCh:       make(chan *sampler.PipelineRecord, 4096), // Bounded channel for kept records
+		samplerOutputSuppressedCh: make(chan *sampler.PipelineRecord, 4096), // Bounded channel for suppressed records
 	}
 
 	// Add global middleware
@@ -118,8 +158,37 @@ func (s *HTTP) Start() error {
 		return fmt.Errorf("HTTP server is already running")
 	}
 
+	// Initialize miner components
+	if err := s.initMiner(); err != nil {
+		return fmt.Errorf("failed to initialize miner: %w", err)
+	}
+
+	// Initialize sampler components
+	if err := s.initSampler(); err != nil {
+		return fmt.Errorf("failed to initialize sampler: %w", err)
+	}
+
+	// Initialize Loki sink
+	if err := s.initLoki(); err != nil {
+		return fmt.Errorf("failed to initialize Loki sink: %w", err)
+	}
+
+	// Initialize Index-Feed producer
+	if err := s.initIndexFeed(); err != nil {
+		return fmt.Errorf("failed to initialize Index-Feed producer: %w", err)
+	}
+
 	// Start the raw worker
 	s.startRawWorker()
+
+	// Start the miner batcher
+	s.startMinerBatcher()
+
+	// Start the sampler batcher
+	s.startSamplerBatcher()
+
+	// Start the Loki sink
+	s.startLokiSink()
 
 	addr := fmt.Sprintf("%s:%s", s.config.Host, s.config.Port)
 
@@ -148,7 +217,34 @@ func (s *HTTP) Stop(ctx context.Context) error {
 
 	s.log.Info().Msg("Shutting down HTTP server...")
 
-	// Stop the raw worker first
+	// Stop the Index-Feed processor first
+	if s.indexFeedClient != nil {
+		if err := s.indexFeedClient.Close(ctx); err != nil {
+			s.log.Error().Err(err).Msg("Error closing Index-Feed processor")
+		} else {
+			s.log.Info().Msg("Index-Feed processor stopped")
+		}
+	}
+
+	// Stop the Loki sink
+	if s.lokiSink != nil {
+		s.lokiSink.Stop()
+		s.log.Info().Msg("Loki sink stopped")
+	}
+
+	// Stop the sampler batcher
+	if s.samplerBatcher != nil {
+		s.samplerBatcher.Stop()
+		s.log.Info().Msg("Sampler batcher stopped")
+	}
+
+	// Stop the miner batcher
+	if s.minerBatcher != nil {
+		s.minerBatcher.Stop()
+		s.log.Info().Msg("Miner batcher stopped")
+	}
+
+	// Stop the raw worker
 	s.stopRawWorker()
 
 	if err := s.server.Shutdown(ctx); err != nil {
@@ -266,6 +362,13 @@ func (s *HTTP) corsMiddleware() gin.HandlerFunc {
 func (s *HTTP) startRawWorker() {
 	s.workerWg.Add(1)
 	go s.runRawWorker()
+
+	s.workerWg.Add(1)
+	go s.runMinerToSamplerBridge()
+
+	s.workerWg.Add(1)
+	go s.runSamplerToLokiBridge()
+
 	s.log.Info().Msg("Raw worker started")
 }
 
@@ -275,6 +378,119 @@ func (s *HTTP) stopRawWorker() {
 	s.workerCancel()
 	s.workerWg.Wait()
 	s.log.Info().Msg("Raw worker stopped")
+}
+
+// initMiner initializes the miner client and batcher
+func (s *HTTP) initMiner() error {
+	if s.minerConfig == nil {
+		return fmt.Errorf("miner config is nil")
+	}
+
+	// Create miner client
+	client, err := miner.NewClient(s.minerConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create miner client: %w", err)
+	}
+	s.minerClient = client
+
+	// Create miner batcher
+	s.minerBatcher = miner.NewBatcher(
+		s.minerConfig.MaxBatch,
+		s.minerConfig.MaxBatchWait,
+		s.minerInputCh,
+		s.minerOutputCh,
+		s.minerClient,
+		miner.NewMetrics(s.metric),
+		s.log,
+	)
+
+	return nil
+}
+
+// startMinerBatcher starts the miner batcher
+func (s *HTTP) startMinerBatcher() {
+	if s.minerBatcher != nil {
+		s.minerBatcher.Start()
+		s.log.Info().Msg("Miner batcher started")
+	}
+}
+
+// initSampler initializes the sampler client and batcher
+func (s *HTTP) initSampler() error {
+	if s.samplerConfig == nil {
+		return fmt.Errorf("sampler config is nil")
+	}
+
+	// Create sampler client
+	client, err := sampler.NewSamplerClient(s.samplerConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create sampler client: %w", err)
+	}
+	s.samplerClient = client
+
+	// Create sampler batcher
+	s.samplerBatcher = sampler.NewSamplerBatcher(
+		s.samplerConfig,
+		s.enforcementConfig,
+		s.samplerClient,
+		sampler.NewSamplerMetrics(s.metric),
+		s.log,
+		s.samplerInputCh,
+		s.samplerOutputKeptCh,
+		s.samplerOutputSuppressedCh,
+	)
+
+	return nil
+}
+
+// startSamplerBatcher starts the sampler batcher
+func (s *HTTP) startSamplerBatcher() {
+	if s.samplerBatcher != nil {
+		s.samplerBatcher.Start()
+		s.log.Info().Msg("Sampler batcher started")
+	}
+}
+
+// initLoki initializes the Loki sink
+func (s *HTTP) initLoki() error {
+	if s.lokiConfig == nil {
+		return fmt.Errorf("loki config is nil")
+	}
+
+	// Create Loki sink
+	s.lokiSink = loki.NewLokiSink(
+		s.lokiConfig,
+		loki.NewLokiMetrics(s.metric),
+		s.log,
+	)
+
+	return nil
+}
+
+// startLokiSink starts the Loki sink
+func (s *HTTP) startLokiSink() {
+	if s.lokiSink != nil {
+		s.lokiSink.Start()
+		s.log.Info().Msg("Loki sink started")
+	}
+}
+
+// initIndexFeed initializes the Index-Feed processor
+func (s *HTTP) initIndexFeed() error {
+	if s.indexFeedConfig == nil {
+		return fmt.Errorf("indexfeed config is nil")
+	}
+
+	// Create Index-Feed client
+	client, err := indexfeed.NewClient(s.indexFeedConfig, s.log)
+	if err != nil {
+		return fmt.Errorf("failed to create Index-Feed client: %w", err)
+	}
+
+	// Create Index-Feed processor
+	s.indexFeedClient = client
+
+	return nil
 }
 
 // runRawWorker continuously processes queued raw batches
@@ -290,6 +506,19 @@ func (s *HTTP) runRawWorker() {
 			if err != nil {
 				s.log.Error().Err(err).Msg("Failed to process raw batch")
 			} else if batch != nil && len(batch.Records) > 0 {
+				// Send normalized logs to miner for processing
+				for _, nl := range batch.Records {
+					select {
+					case s.minerInputCh <- nl:
+						// Successfully sent to miner
+					default:
+						// Backpressure: if miner input is full, block with context deadline
+						// or drop lowest severity logs (for now, just block)
+						s.minerInputCh <- nl
+					}
+				}
+
+				// Also emit to the original emitter for shadow mode
 				if err := s.ingest.GetEmitter().EmitNormalizedLogBatch(item.Ctx, batch); err != nil {
 					s.log.Error().Err(err).Msg("Failed to emit normalized log batch")
 				}
@@ -299,6 +528,134 @@ func (s *HTTP) runRawWorker() {
 			return
 		}
 	}
+}
+
+// runMinerToSamplerBridge bridges miner output to sampler input
+func (s *HTTP) runMinerToSamplerBridge() {
+	defer s.workerWg.Done()
+
+	s.log.Info().Msg("Miner to sampler bridge started")
+
+	for {
+		select {
+		case minedRecord := <-s.minerOutputCh:
+			// Convert MinedRecord to PipelineRecord using primary result
+			pipelineRecord := &sampler.PipelineRecord{
+				Normalized: minedRecord.Normalized,
+				TemplateID: minedRecord.Primary.TemplateID,
+				Shadow:     false,
+			}
+
+			// Send to sampler input
+			select {
+			case s.samplerInputCh <- pipelineRecord:
+				// Successfully sent to sampler
+			default:
+				// Backpressure handling
+				s.samplerInputCh <- pipelineRecord
+			}
+
+			// Process Index-Feed events
+			s.indexFeedClient.ProcessMinedRecord(context.Background(), minedRecord)
+
+		case <-s.workerCtx.Done():
+			s.log.Info().Msg("Miner to sampler bridge shutting down")
+			return
+		}
+	}
+}
+
+// runSamplerToLokiBridge bridges sampler kept output to Loki sink
+func (s *HTTP) runSamplerToLokiBridge() {
+	defer s.workerWg.Done()
+
+	s.log.Info().Msg("Sampler to Loki bridge started")
+
+	for {
+		select {
+		case keptRecord := <-s.samplerOutputKeptCh:
+			// Convert PipelineRecord to LokiEntry
+			lokiEntry := s.convertToLokiEntry(keptRecord)
+
+			// Send to Loki sink
+			if s.lokiSink != nil {
+				s.lokiSink.Enqueue(context.Background(), []loki.LokiEntry{lokiEntry})
+			}
+
+		case <-s.workerCtx.Done():
+			s.log.Info().Msg("Sampler to Loki bridge shutting down")
+			return
+		}
+	}
+}
+
+// convertToLokiEntry converts a PipelineRecord to a LokiEntry
+func (s *HTTP) convertToLokiEntry(record *sampler.PipelineRecord) loki.LokiEntry {
+	// Build the final log line with annotations
+	line := s.buildLogLine(record)
+
+	// Ensure required labels are present
+	labels := make(map[string]string)
+	for k, v := range record.Normalized.Labels {
+		labels[k] = v
+	}
+
+	// Add required labels with defaults if missing
+	if labels["service"] == "" {
+		labels["service"] = "unknown"
+	}
+	if labels["env"] == "" {
+		labels["env"] = "unknown"
+	}
+	if labels["severity"] == "" {
+		labels["severity"] = "info"
+	}
+	if labels["namespace"] == "" {
+		labels["namespace"] = "default"
+	}
+	if labels["pod"] == "" {
+		labels["pod"] = "unknown"
+	}
+
+	return loki.LokiEntry{
+		Timestamp: record.Normalized.Timestamp,
+		Labels:    labels,
+		Line:      line,
+	}
+}
+
+// buildLogLine builds the final log line with annotations
+func (s *HTTP) buildLogLine(record *sampler.PipelineRecord) string {
+	baseLine := record.Normalized.Message
+
+	// Add annotations as fields (not as high-cardinality labels)
+	annotations := []string{}
+
+	if record.TemplateID != "" {
+		annotations = append(annotations, fmt.Sprintf("template_id=%s", record.TemplateID))
+	}
+
+	if record.Decision.KeepReason.String() != "" {
+		annotations = append(annotations, fmt.Sprintf("keep_reason=%s", record.Decision.KeepReason.String()))
+	}
+
+	if record.Normalized.Sanitized {
+		annotations = append(annotations, "sanitized=true")
+	}
+
+	if record.Normalized.Truncated {
+		annotations = append(annotations, "truncated=true")
+	}
+
+	if record.Shadow {
+		annotations = append(annotations, "shadow=true")
+	}
+
+	if len(annotations) > 0 {
+		return fmt.Sprintf("%s | %s", baseLine, strings.Join(annotations, " "))
+	}
+
+	return baseLine
 }
 
 // enqueueRawBatch enqueues a raw batch for background processing with timeout handling

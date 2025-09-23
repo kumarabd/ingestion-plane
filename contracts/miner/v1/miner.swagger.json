@@ -36,7 +36,6 @@
         "parameters": [
           {
             "name": "body",
-            "description": "Request to analyze normalized logs (usually batched).",
             "in": "body",
             "required": true,
             "schema": {
@@ -51,6 +50,31 @@
     }
   },
   "definitions": {
+    "commonv1Severity": {
+      "type": "string",
+      "enum": [
+        "SEVERITY_UNSPECIFIED",
+        "SEVERITY_DEBUG",
+        "SEVERITY_INFO",
+        "SEVERITY_WARN",
+        "SEVERITY_ERROR",
+        "SEVERITY_FATAL"
+      ],
+      "default": "SEVERITY_UNSPECIFIED",
+      "description": "Normalized severity. Keep mapping small; do not mirror every library level."
+    },
+    "minerv1Provenance": {
+      "type": "string",
+      "enum": [
+        "PROVENANCE_UNSPECIFIED",
+        "PROVENANCE_CACHE",
+        "PROVENANCE_HEURISTIC",
+        "PROVENANCE_LIBRELOG",
+        "PROVENANCE_FALLBACK"
+      ],
+      "default": "PROVENANCE_UNSPECIFIED",
+      "title": "- PROVENANCE_CACHE: found in template memory\n - PROVENANCE_HEURISTIC: grouping-tree / non-LLM heuristic\n - PROVENANCE_LIBRELOG: LibreLog / LLM-assisted synthesis\n - PROVENANCE_FALLBACK: masked-preview → regex fallback"
+    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -87,10 +111,10 @@
           "items": {
             "type": "object",
             "$ref": "#/definitions/v1NormalizedLog"
-          }
+          },
+          "description": "Normalized, PII-safe records from the gateway."
         }
-      },
-      "description": "Request to analyze normalized logs (usually batched)."
+      }
     },
     "v1AnalyzeResponse": {
       "type": "object",
@@ -100,10 +124,37 @@
           "items": {
             "type": "object",
             "$ref": "#/definitions/v1TemplateResult"
-          }
+          },
+          "description": "Authoritative, 1:1 with AnalyzeRequest.records via record_index."
+        },
+        "shadows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1MinerShadow"
+          },
+          "description": "Optional alternates for drift analysis / semantic pre-indexing."
+        }
+      }
+    },
+    "v1MinerShadow": {
+      "type": "object",
+      "properties": {
+        "recordIndex": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Index of the input record this shadow set refers to."
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TemplateResult"
+          },
+          "description": "Ranked alternate candidates (same shape as TemplateResult)."
         }
       },
-      "description": "Batch response; results[i] corresponds to request.records[i]."
+      "description": "Non-authoritative alternates considered for a given input record."
     },
     "v1NormalizedLog": {
       "type": "object",
@@ -135,7 +186,7 @@
           "description": "Source schema classification for this line."
         },
         "severity": {
-          "$ref": "#/definitions/v1Severity",
+          "$ref": "#/definitions/commonv1Severity",
           "description": "Normalized severity (also present in labels)."
         },
         "sanitized": {
@@ -194,47 +245,43 @@
       "default": "SCHEMA_UNSPECIFIED",
       "description": "Source schema of the incoming payload after detection."
     },
-    "v1Severity": {
-      "type": "string",
-      "enum": [
-        "SEVERITY_UNSPECIFIED",
-        "SEVERITY_DEBUG",
-        "SEVERITY_INFO",
-        "SEVERITY_WARN",
-        "SEVERITY_ERROR",
-        "SEVERITY_FATAL"
-      ],
-      "default": "SEVERITY_UNSPECIFIED",
-      "description": "Normalized severity. Keep mapping small; do not mirror every library level."
-    },
     "v1TemplateResult": {
       "type": "object",
       "properties": {
+        "recordIndex": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Index of the input record in AnalyzeRequest.records (explicit mapping)."
+        },
         "templateId": {
           "type": "string",
-          "description": "Stable identifier (hash of canonical template)."
+          "description": "Stable identifier for the template (e.g., hash of canonical text)."
         },
         "template": {
           "type": "string",
-          "description": "Canonical masked template text (post-PII redaction)."
+          "description": "Canonical masked template text (post-PII)."
         },
         "regex": {
           "type": "string",
-          "description": "Pre-built regex derived from placeholders, for LogQL generation."
+          "description": "Regex derived from placeholders; used by the planner to build LogQL."
         },
         "groupSignature": {
           "type": "string",
-          "description": "Optional group signature / bucket id (e.g., token-type sequence)."
+          "description": "Optional grouping signature / bucket id (token-type sequence, etc.)."
         },
         "confidence": {
           "type": "number",
           "format": "float",
-          "description": "Confidence (0..1) for the assignment."
+          "description": "Confidence (0..1) for this assignment."
+        },
+        "provenance": {
+          "$ref": "#/definitions/minerv1Provenance",
+          "description": "Provenance of this result (cache, heuristic, librelog, fallback)."
         },
         "firstSeen": {
           "type": "string",
           "format": "date-time",
-          "description": "First/last time we saw this template (as known by the miner)."
+          "description": "Template lifecycle hints (as known by the miner)."
         },
         "lastSeen": {
           "type": "string",
@@ -245,10 +292,10 @@
           "items": {
             "type": "string"
           },
-          "description": "Optional bounded exemplars (very small)."
+          "description": "Small, bounded exemplars for UI/analysis (already redacted)."
         }
       },
-      "description": "Result for each input record (1:1 alignment with request.records)."
+      "description": "Canonical template assignment for a single input record."
     }
   }
 }

@@ -51,6 +51,19 @@
     }
   },
   "definitions": {
+    "commonv1Severity": {
+      "type": "string",
+      "enum": [
+        "SEVERITY_UNSPECIFIED",
+        "SEVERITY_DEBUG",
+        "SEVERITY_INFO",
+        "SEVERITY_WARN",
+        "SEVERITY_ERROR",
+        "SEVERITY_FATAL"
+      ],
+      "default": "SEVERITY_UNSPECIFIED",
+      "description": "Normalized severity. Keep mapping small; do not mirror every library level."
+    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -118,7 +131,7 @@
           "description": "Source schema classification for this line."
         },
         "severity": {
-          "$ref": "#/definitions/v1Severity",
+          "$ref": "#/definitions/commonv1Severity",
           "description": "Normalized severity (also present in labels)."
         },
         "sanitized": {
@@ -189,19 +202,6 @@
       ],
       "default": "SCHEMA_UNSPECIFIED",
       "description": "Source schema of the incoming payload after detection."
-    },
-    "v1Severity": {
-      "type": "string",
-      "enum": [
-        "SEVERITY_UNSPECIFIED",
-        "SEVERITY_DEBUG",
-        "SEVERITY_INFO",
-        "SEVERITY_WARN",
-        "SEVERITY_ERROR",
-        "SEVERITY_FATAL"
-      ],
-      "default": "SEVERITY_UNSPECIFIED",
-      "description": "Normalized severity. Keep mapping small; do not mirror every library level."
     }
   }
 }

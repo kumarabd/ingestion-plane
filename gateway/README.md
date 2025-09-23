@@ -87,15 +87,9 @@ service:
     validate_utf8: true
   
   emitter:
-    output_type: "forwarder"
-    forwarder:
-      shadow_mode: true
-      miner:
-        enabled: true
-        endpoint: "http://localhost:8001/api/v1/logs"
-      loki:
-        enabled: true
-        endpoint: "http://localhost:3100/loki/api/v1/push"
+    output_type: "stdout"
+    batch_size: 100
+    flush_interval: 5
 ```
 
 ## API Usage
@@ -164,7 +158,9 @@ gateway/
 │   │   ├── otlp.go               # OTLP handler
 │   │   ├── grpc_service.go       # gRPC service implementation
 │   │   └── emitter.go            # Log emission
-│   ├── forwarder/                 # Log forwarding to Miner/Loki
+│   ├── sink/                      # Log sinks (Loki, etc.)
+│   │   └── loki/                  # Loki sink implementation
+│   ├── indexfeed/                 # Index-Feed producer for template events
 │   └── server/                    # HTTP and gRPC servers
 ├── internal/
 │   ├── config/                    # Configuration management
@@ -189,8 +185,10 @@ The gateway exposes Prometheus metrics at `/metrics`:
 
 - `grpc_push_latency_seconds` - gRPC Push method latency
 - `grpc_batch_size` - Batch sizes
-- `forwarder_logs_forwarded_total` - Total forwarded logs
-- `forwarder_latency_seconds` - Forwarding latency
+- `loki_sink_enqueued_total` - Total logs enqueued to Loki sink
+- `loki_sink_flush_total` - Total Loki sink flushes
+- `indexfeed_produced_total` - Total template events produced to Index-Feed
+- `indexfeed_dropped_total` - Total dropped Index-Feed events
 
 ### Health Checks
 

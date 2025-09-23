@@ -23,10 +23,65 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Request to analyze normalized logs (usually batched).
+type Provenance int32
+
+const (
+	Provenance_PROVENANCE_UNSPECIFIED Provenance = 0
+	Provenance_PROVENANCE_CACHE       Provenance = 1 // found in template memory
+	Provenance_PROVENANCE_HEURISTIC   Provenance = 2 // grouping-tree / non-LLM heuristic
+	Provenance_PROVENANCE_LIBRELOG    Provenance = 3 // LibreLog / LLM-assisted synthesis
+	Provenance_PROVENANCE_FALLBACK    Provenance = 4 // masked-preview → regex fallback
+)
+
+// Enum value maps for Provenance.
+var (
+	Provenance_name = map[int32]string{
+		0: "PROVENANCE_UNSPECIFIED",
+		1: "PROVENANCE_CACHE",
+		2: "PROVENANCE_HEURISTIC",
+		3: "PROVENANCE_LIBRELOG",
+		4: "PROVENANCE_FALLBACK",
+	}
+	Provenance_value = map[string]int32{
+		"PROVENANCE_UNSPECIFIED": 0,
+		"PROVENANCE_CACHE":       1,
+		"PROVENANCE_HEURISTIC":   2,
+		"PROVENANCE_LIBRELOG":    3,
+		"PROVENANCE_FALLBACK":    4,
+	}
+)
+
+func (x Provenance) Enum() *Provenance {
+	p := new(Provenance)
+	*p = x
+	return p
+}
+
+func (x Provenance) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Provenance) Descriptor() protoreflect.EnumDescriptor {
+	return file_miner_v1_miner_proto_enumTypes[0].Descriptor()
+}
+
+func (Provenance) Type() protoreflect.EnumType {
+	return &file_miner_v1_miner_proto_enumTypes[0]
+}
+
+func (x Provenance) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Provenance.Descriptor instead.
+func (Provenance) EnumDescriptor() ([]byte, []int) {
+	return file_miner_v1_miner_proto_rawDescGZIP(), []int{0}
+}
+
 type AnalyzeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Records       []*v1.NormalizedLog    `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Normalized, PII-safe records from the gateway.
+	Records       []*v1.NormalizedLog `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -68,24 +123,28 @@ func (x *AnalyzeRequest) GetRecords() []*v1.NormalizedLog {
 	return nil
 }
 
-// Result for each input record (1:1 alignment with request.records).
+// Canonical template assignment for a single input record.
 type TemplateResult struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Stable identifier (hash of canonical template).
-	TemplateId string `protobuf:"bytes,1,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
-	// Canonical masked template text (post-PII redaction).
-	Template string `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
-	// Pre-built regex derived from placeholders, for LogQL generation.
-	Regex string `protobuf:"bytes,3,opt,name=regex,proto3" json:"regex,omitempty"`
-	// Optional group signature / bucket id (e.g., token-type sequence).
-	GroupSignature string `protobuf:"bytes,4,opt,name=group_signature,json=groupSignature,proto3" json:"group_signature,omitempty"`
-	// Confidence (0..1) for the assignment.
-	Confidence float32 `protobuf:"fixed32,5,opt,name=confidence,proto3" json:"confidence,omitempty"`
-	// First/last time we saw this template (as known by the miner).
-	FirstSeen *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=first_seen,json=firstSeen,proto3" json:"first_seen,omitempty"`
-	LastSeen  *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
-	// Optional bounded exemplars (very small).
-	Examples      []string `protobuf:"bytes,8,rep,name=examples,proto3" json:"examples,omitempty"`
+	// Index of the input record in AnalyzeRequest.records (explicit mapping).
+	RecordIndex int32 `protobuf:"varint,1,opt,name=record_index,json=recordIndex,proto3" json:"record_index,omitempty"`
+	// Stable identifier for the template (e.g., hash of canonical text).
+	TemplateId string `protobuf:"bytes,2,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
+	// Canonical masked template text (post-PII).
+	Template string `protobuf:"bytes,3,opt,name=template,proto3" json:"template,omitempty"`
+	// Regex derived from placeholders; used by the planner to build LogQL.
+	Regex string `protobuf:"bytes,4,opt,name=regex,proto3" json:"regex,omitempty"`
+	// Optional grouping signature / bucket id (token-type sequence, etc.).
+	GroupSignature string `protobuf:"bytes,5,opt,name=group_signature,json=groupSignature,proto3" json:"group_signature,omitempty"`
+	// Confidence (0..1) for this assignment.
+	Confidence float32 `protobuf:"fixed32,6,opt,name=confidence,proto3" json:"confidence,omitempty"`
+	// Provenance of this result (cache, heuristic, librelog, fallback).
+	Provenance Provenance `protobuf:"varint,7,opt,name=provenance,proto3,enum=miner.v1.Provenance" json:"provenance,omitempty"`
+	// Template lifecycle hints (as known by the miner).
+	FirstSeen *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=first_seen,json=firstSeen,proto3" json:"first_seen,omitempty"`
+	LastSeen  *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
+	// Small, bounded exemplars for UI/analysis (already redacted).
+	Examples      []string `protobuf:"bytes,10,rep,name=examples,proto3" json:"examples,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -118,6 +177,13 @@ func (x *TemplateResult) ProtoReflect() protoreflect.Message {
 // Deprecated: Use TemplateResult.ProtoReflect.Descriptor instead.
 func (*TemplateResult) Descriptor() ([]byte, []int) {
 	return file_miner_v1_miner_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *TemplateResult) GetRecordIndex() int32 {
+	if x != nil {
+		return x.RecordIndex
+	}
+	return 0
 }
 
 func (x *TemplateResult) GetTemplateId() string {
@@ -155,6 +221,13 @@ func (x *TemplateResult) GetConfidence() float32 {
 	return 0
 }
 
+func (x *TemplateResult) GetProvenance() Provenance {
+	if x != nil {
+		return x.Provenance
+	}
+	return Provenance_PROVENANCE_UNSPECIFIED
+}
+
 func (x *TemplateResult) GetFirstSeen() *timestamppb.Timestamp {
 	if x != nil {
 		return x.FirstSeen
@@ -176,17 +249,74 @@ func (x *TemplateResult) GetExamples() []string {
 	return nil
 }
 
-// Batch response; results[i] corresponds to request.records[i].
+// Non-authoritative alternates considered for a given input record.
+type MinerShadow struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Index of the input record this shadow set refers to.
+	RecordIndex int32 `protobuf:"varint,1,opt,name=record_index,json=recordIndex,proto3" json:"record_index,omitempty"`
+	// Ranked alternate candidates (same shape as TemplateResult).
+	Candidates    []*TemplateResult `protobuf:"bytes,2,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MinerShadow) Reset() {
+	*x = MinerShadow{}
+	mi := &file_miner_v1_miner_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MinerShadow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MinerShadow) ProtoMessage() {}
+
+func (x *MinerShadow) ProtoReflect() protoreflect.Message {
+	mi := &file_miner_v1_miner_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MinerShadow.ProtoReflect.Descriptor instead.
+func (*MinerShadow) Descriptor() ([]byte, []int) {
+	return file_miner_v1_miner_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *MinerShadow) GetRecordIndex() int32 {
+	if x != nil {
+		return x.RecordIndex
+	}
+	return 0
+}
+
+func (x *MinerShadow) GetCandidates() []*TemplateResult {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
 type AnalyzeResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Results       []*TemplateResult      `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Authoritative, 1:1 with AnalyzeRequest.records via record_index.
+	Results []*TemplateResult `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	// Optional alternates for drift analysis / semantic pre-indexing.
+	Shadows       []*MinerShadow `protobuf:"bytes,2,rep,name=shadows,proto3" json:"shadows,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AnalyzeResponse) Reset() {
 	*x = AnalyzeResponse{}
-	mi := &file_miner_v1_miner_proto_msgTypes[2]
+	mi := &file_miner_v1_miner_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -198,7 +328,7 @@ func (x *AnalyzeResponse) String() string {
 func (*AnalyzeResponse) ProtoMessage() {}
 
 func (x *AnalyzeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_miner_v1_miner_proto_msgTypes[2]
+	mi := &file_miner_v1_miner_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -211,12 +341,19 @@ func (x *AnalyzeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeResponse.ProtoReflect.Descriptor instead.
 func (*AnalyzeResponse) Descriptor() ([]byte, []int) {
-	return file_miner_v1_miner_proto_rawDescGZIP(), []int{2}
+	return file_miner_v1_miner_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *AnalyzeResponse) GetResults() []*TemplateResult {
 	if x != nil {
 		return x.Results
+	}
+	return nil
+}
+
+func (x *AnalyzeResponse) GetShadows() []*MinerShadow {
+	if x != nil {
+		return x.Shadows
 	}
 	return nil
 }
@@ -227,22 +364,40 @@ const file_miner_v1_miner_proto_rawDesc = "" +
 	"\n" +
 	"\x14miner/v1/miner.proto\x12\bminer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16ingest/v1/ingest.proto\"D\n" +
 	"\x0eAnalyzeRequest\x122\n" +
-	"\arecords\x18\x01 \x03(\v2\x18.ingest.v1.NormalizedLogR\arecords\"\xbc\x02\n" +
-	"\x0eTemplateResult\x12\x1f\n" +
-	"\vtemplate_id\x18\x01 \x01(\tR\n" +
+	"\arecords\x18\x01 \x03(\v2\x18.ingest.v1.NormalizedLogR\arecords\"\x95\x03\n" +
+	"\x0eTemplateResult\x12!\n" +
+	"\frecord_index\x18\x01 \x01(\x05R\vrecordIndex\x12\x1f\n" +
+	"\vtemplate_id\x18\x02 \x01(\tR\n" +
 	"templateId\x12\x1a\n" +
-	"\btemplate\x18\x02 \x01(\tR\btemplate\x12\x14\n" +
-	"\x05regex\x18\x03 \x01(\tR\x05regex\x12'\n" +
-	"\x0fgroup_signature\x18\x04 \x01(\tR\x0egroupSignature\x12\x1e\n" +
+	"\btemplate\x18\x03 \x01(\tR\btemplate\x12\x14\n" +
+	"\x05regex\x18\x04 \x01(\tR\x05regex\x12'\n" +
+	"\x0fgroup_signature\x18\x05 \x01(\tR\x0egroupSignature\x12\x1e\n" +
 	"\n" +
-	"confidence\x18\x05 \x01(\x02R\n" +
-	"confidence\x129\n" +
+	"confidence\x18\x06 \x01(\x02R\n" +
+	"confidence\x124\n" +
 	"\n" +
-	"first_seen\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tfirstSeen\x127\n" +
-	"\tlast_seen\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12\x1a\n" +
-	"\bexamples\x18\b \x03(\tR\bexamples\"E\n" +
+	"provenance\x18\a \x01(\x0e2\x14.miner.v1.ProvenanceR\n" +
+	"provenance\x129\n" +
+	"\n" +
+	"first_seen\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tfirstSeen\x127\n" +
+	"\tlast_seen\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12\x1a\n" +
+	"\bexamples\x18\n" +
+	" \x03(\tR\bexamples\"j\n" +
+	"\vMinerShadow\x12!\n" +
+	"\frecord_index\x18\x01 \x01(\x05R\vrecordIndex\x128\n" +
+	"\n" +
+	"candidates\x18\x02 \x03(\v2\x18.miner.v1.TemplateResultR\n" +
+	"candidates\"v\n" +
 	"\x0fAnalyzeResponse\x122\n" +
-	"\aresults\x18\x01 \x03(\v2\x18.miner.v1.TemplateResultR\aresults2N\n" +
+	"\aresults\x18\x01 \x03(\v2\x18.miner.v1.TemplateResultR\aresults\x12/\n" +
+	"\ashadows\x18\x02 \x03(\v2\x15.miner.v1.MinerShadowR\ashadows*\x8a\x01\n" +
+	"\n" +
+	"Provenance\x12\x1a\n" +
+	"\x16PROVENANCE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10PROVENANCE_CACHE\x10\x01\x12\x18\n" +
+	"\x14PROVENANCE_HEURISTIC\x10\x02\x12\x17\n" +
+	"\x13PROVENANCE_LIBRELOG\x10\x03\x12\x17\n" +
+	"\x13PROVENANCE_FALLBACK\x10\x042N\n" +
 	"\fMinerService\x12>\n" +
 	"\aAnalyze\x12\x18.miner.v1.AnalyzeRequest\x1a\x19.miner.v1.AnalyzeResponseB@Z>github.com/kumarabd/ingestion-plane/contracts/miner/v1;minerv1b\x06proto3"
 
@@ -258,26 +413,32 @@ func file_miner_v1_miner_proto_rawDescGZIP() []byte {
 	return file_miner_v1_miner_proto_rawDescData
 }
 
-var file_miner_v1_miner_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_miner_v1_miner_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_miner_v1_miner_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_miner_v1_miner_proto_goTypes = []any{
-	(*AnalyzeRequest)(nil),        // 0: miner.v1.AnalyzeRequest
-	(*TemplateResult)(nil),        // 1: miner.v1.TemplateResult
-	(*AnalyzeResponse)(nil),       // 2: miner.v1.AnalyzeResponse
-	(*v1.NormalizedLog)(nil),      // 3: ingest.v1.NormalizedLog
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(Provenance)(0),               // 0: miner.v1.Provenance
+	(*AnalyzeRequest)(nil),        // 1: miner.v1.AnalyzeRequest
+	(*TemplateResult)(nil),        // 2: miner.v1.TemplateResult
+	(*MinerShadow)(nil),           // 3: miner.v1.MinerShadow
+	(*AnalyzeResponse)(nil),       // 4: miner.v1.AnalyzeResponse
+	(*v1.NormalizedLog)(nil),      // 5: ingest.v1.NormalizedLog
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_miner_v1_miner_proto_depIdxs = []int32{
-	3, // 0: miner.v1.AnalyzeRequest.records:type_name -> ingest.v1.NormalizedLog
-	4, // 1: miner.v1.TemplateResult.first_seen:type_name -> google.protobuf.Timestamp
-	4, // 2: miner.v1.TemplateResult.last_seen:type_name -> google.protobuf.Timestamp
-	1, // 3: miner.v1.AnalyzeResponse.results:type_name -> miner.v1.TemplateResult
-	0, // 4: miner.v1.MinerService.Analyze:input_type -> miner.v1.AnalyzeRequest
-	2, // 5: miner.v1.MinerService.Analyze:output_type -> miner.v1.AnalyzeResponse
-	5, // [5:6] is the sub-list for method output_type
-	4, // [4:5] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	5, // 0: miner.v1.AnalyzeRequest.records:type_name -> ingest.v1.NormalizedLog
+	0, // 1: miner.v1.TemplateResult.provenance:type_name -> miner.v1.Provenance
+	6, // 2: miner.v1.TemplateResult.first_seen:type_name -> google.protobuf.Timestamp
+	6, // 3: miner.v1.TemplateResult.last_seen:type_name -> google.protobuf.Timestamp
+	2, // 4: miner.v1.MinerShadow.candidates:type_name -> miner.v1.TemplateResult
+	2, // 5: miner.v1.AnalyzeResponse.results:type_name -> miner.v1.TemplateResult
+	3, // 6: miner.v1.AnalyzeResponse.shadows:type_name -> miner.v1.MinerShadow
+	1, // 7: miner.v1.MinerService.Analyze:input_type -> miner.v1.AnalyzeRequest
+	4, // 8: miner.v1.MinerService.Analyze:output_type -> miner.v1.AnalyzeResponse
+	8, // [8:9] is the sub-list for method output_type
+	7, // [7:8] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_miner_v1_miner_proto_init() }
@@ -290,13 +451,14 @@ func file_miner_v1_miner_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_miner_v1_miner_proto_rawDesc), len(file_miner_v1_miner_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   3,
+			NumEnums:      1,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_miner_v1_miner_proto_goTypes,
 		DependencyIndexes: file_miner_v1_miner_proto_depIdxs,
+		EnumInfos:         file_miner_v1_miner_proto_enumTypes,
 		MessageInfos:      file_miner_v1_miner_proto_msgTypes,
 	}.Build()
 	File_miner_v1_miner_proto = out.File

@@ -4,14 +4,92 @@
     "title": "indexfeed/v1/indexfeed.proto",
     "version": "version not set"
   },
+  "tags": [
+    {
+      "name": "CandidateIngest"
+    }
+  ],
   "consumes": [
     "application/json"
   ],
   "produces": [
     "application/json"
   ],
-  "paths": {},
+  "paths": {
+    "/indexcandidate.v1.CandidateIngest/Publish": {
+      "post": {
+        "operationId": "CandidateIngest_Publish",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1PublishAck"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "Batch wrapper for higher throughput regardless of transport.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1TemplateCandidateBatch"
+            }
+          }
+        ],
+        "tags": [
+          "CandidateIngest"
+        ]
+      }
+    }
+  },
   "definitions": {
+    "indexcandidatev1Exemplar": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "title": "masked/redacted, truncated if needed"
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "title": "timestamp for context (optional)"
+        },
+        "namespace": {
+          "type": "string",
+          "title": "optional"
+        },
+        "pod": {
+          "type": "string",
+          "title": "optional"
+        },
+        "stream": {
+          "type": "string",
+          "title": "optional (stdout|stderr|file)"
+        }
+      },
+      "description": "Small, redacted exemplar (optional; bounded)."
+    },
+    "indexcandidatev1Provenance": {
+      "type": "string",
+      "enum": [
+        "PROVENANCE_UNSPECIFIED",
+        "PROVENANCE_CACHE",
+        "PROVENANCE_HEURISTIC",
+        "PROVENANCE_LIBRELOG",
+        "PROVENANCE_FALLBACK"
+      ],
+      "default": "PROVENANCE_UNSPECIFIED",
+      "description": "Provenance of the canonical template in this candidate.\n\n - PROVENANCE_CACHE: found in template memory\n - PROVENANCE_HEURISTIC: grouping-tree / non-LLM heuristic\n - PROVENANCE_LIBRELOG: LibreLog / LLM-assisted synthesis\n - PROVENANCE_FALLBACK: masked-preview → regex fallback"
+    },
     "protobufAny": {
       "type": "object",
       "properties": {
@@ -39,6 +117,134 @@
           }
         }
       }
+    },
+    "v1PublishAck": {
+      "type": "object",
+      "properties": {
+        "accepted": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "rejected": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "note": {
+          "type": "string",
+          "title": "diagnostic for first rejection cause (optional)"
+        }
+      }
+    },
+    "v1RollingStats": {
+      "type": "object",
+      "properties": {
+        "count10m": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "count1h": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "count24h": {
+          "type": "string",
+          "format": "uint64"
+        }
+      },
+      "description": "Rolling activity stats used for ranking/aging and spike baselines."
+    },
+    "v1TemplateCandidate": {
+      "type": "object",
+      "properties": {
+        "tenant": {
+          "type": "string",
+          "description": "multi-tenant key; \"default\" if unused",
+          "title": "---- Identity \u0026 routing ----"
+        },
+        "templateId": {
+          "type": "string",
+          "title": "stable id (hash of canonical template)"
+        },
+        "templateText": {
+          "type": "string",
+          "description": "e.g., \"login success user=\u003cint\u003e ip=\u003cipv4\u003e\"",
+          "title": "---- Canonical definition (PII-safe) ----"
+        },
+        "regex": {
+          "type": "string",
+          "title": "regex derived from placeholders"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "low-card: service/env/severity/namespace"
+        },
+        "stats": {
+          "$ref": "#/definitions/v1RollingStats",
+          "description": "recent counts",
+          "title": "---- Activity \u0026 lifecycle context ----"
+        },
+        "firstSeen": {
+          "type": "string",
+          "format": "date-time",
+          "title": "as known by miner"
+        },
+        "lastSeen": {
+          "type": "string",
+          "format": "date-time",
+          "title": "last observation time"
+        },
+        "provenance": {
+          "$ref": "#/definitions/indexcandidatev1Provenance",
+          "title": "where the canonicalization came from"
+        },
+        "templateVersion": {
+          "type": "string",
+          "title": "Version of the canonical definition (to help UPDATE debouncing downstream).\nSuggested: hash(template_text + \"\\n\" + regex)"
+        },
+        "exemplars": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/indexcandidatev1Exemplar"
+          },
+          "description": "Optional exemplars (small, redacted, bounded)."
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this candidate was produced on the producer side."
+        },
+        "sourceService": {
+          "type": "string",
+          "description": "Optional producer/debug hints (not for keying).\n\ne.g., \"gateway\" or \"miner\""
+        },
+        "producerInstance": {
+          "type": "string",
+          "title": "hostname/pod (non-stable)"
+        },
+        "seqNoHint": {
+          "type": "string",
+          "format": "uint64",
+          "description": "Optional sequencing hint from producer (monotonic per tenant+template_id if available)."
+        }
+      },
+      "description": "The transport-agnostic candidate describing a mined template observation."
+    },
+    "v1TemplateCandidateBatch": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TemplateCandidate"
+          }
+        }
+      },
+      "description": "Batch wrapper for higher throughput regardless of transport."
     }
   }
 }

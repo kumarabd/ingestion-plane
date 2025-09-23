@@ -7,7 +7,6 @@
 package samplerv1
 
 import (
-	v1 "github.com/kumarabd/ingestion-plane/contracts/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -23,16 +22,194 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Decision request combines miner output + key labels used for policy.
+// Canonical severities understood by policies.
+type Severity int32
+
+const (
+	Severity_SEVERITY_UNSPECIFIED Severity = 0
+	Severity_SEVERITY_DEBUG       Severity = 1
+	Severity_SEVERITY_INFO        Severity = 2
+	Severity_SEVERITY_WARN        Severity = 3
+	Severity_SEVERITY_ERROR       Severity = 4
+	Severity_SEVERITY_FATAL       Severity = 5
+)
+
+// Enum value maps for Severity.
+var (
+	Severity_name = map[int32]string{
+		0: "SEVERITY_UNSPECIFIED",
+		1: "SEVERITY_DEBUG",
+		2: "SEVERITY_INFO",
+		3: "SEVERITY_WARN",
+		4: "SEVERITY_ERROR",
+		5: "SEVERITY_FATAL",
+	}
+	Severity_value = map[string]int32{
+		"SEVERITY_UNSPECIFIED": 0,
+		"SEVERITY_DEBUG":       1,
+		"SEVERITY_INFO":        2,
+		"SEVERITY_WARN":        3,
+		"SEVERITY_ERROR":       4,
+		"SEVERITY_FATAL":       5,
+	}
+)
+
+func (x Severity) Enum() *Severity {
+	p := new(Severity)
+	*p = x
+	return p
+}
+
+func (x Severity) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Severity) Descriptor() protoreflect.EnumDescriptor {
+	return file_sampler_v1_sampler_proto_enumTypes[0].Descriptor()
+}
+
+func (Severity) Type() protoreflect.EnumType {
+	return &file_sampler_v1_sampler_proto_enumTypes[0]
+}
+
+func (x Severity) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Severity.Descriptor instead.
+func (Severity) EnumDescriptor() ([]byte, []int) {
+	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{0}
+}
+
+// The action to take for this record.
+type Action int32
+
+const (
+	Action_ACTION_UNSPECIFIED Action = 0
+	Action_ACTION_KEEP        Action = 1
+	Action_ACTION_SUPPRESS    Action = 2
+)
+
+// Enum value maps for Action.
+var (
+	Action_name = map[int32]string{
+		0: "ACTION_UNSPECIFIED",
+		1: "ACTION_KEEP",
+		2: "ACTION_SUPPRESS",
+	}
+	Action_value = map[string]int32{
+		"ACTION_UNSPECIFIED": 0,
+		"ACTION_KEEP":        1,
+		"ACTION_SUPPRESS":    2,
+	}
+)
+
+func (x Action) Enum() *Action {
+	p := new(Action)
+	*p = x
+	return p
+}
+
+func (x Action) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Action) Descriptor() protoreflect.EnumDescriptor {
+	return file_sampler_v1_sampler_proto_enumTypes[1].Descriptor()
+}
+
+func (Action) Type() protoreflect.EnumType {
+	return &file_sampler_v1_sampler_proto_enumTypes[1]
+}
+
+func (x Action) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Action.Descriptor instead.
+func (Action) EnumDescriptor() ([]byte, []int) {
+	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{1}
+}
+
+// First-match-wins reason from the policy ladder.
+type KeepReason int32
+
+const (
+	KeepReason_KEEP_REASON_UNSPECIFIED KeepReason = 0
+	KeepReason_KEEP_REASON_SEVERITY    KeepReason = 1 // error/fatal floors
+	KeepReason_KEEP_REASON_NOVEL       KeepReason = 2 // new template in novelty window
+	KeepReason_KEEP_REASON_SPIKE       KeepReason = 3 // spike-aware relaxation
+	KeepReason_KEEP_REASON_WARMUP      KeepReason = 4 // keep-first-N
+	KeepReason_KEEP_REASON_LOG2        KeepReason = 5 // 1,2,4,8,16...
+	KeepReason_KEEP_REASON_STEADYK     KeepReason = 6 // every Kth
+	KeepReason_KEEP_REASON_BUDGET      KeepReason = 7 // budget guard adjustment
+)
+
+// Enum value maps for KeepReason.
+var (
+	KeepReason_name = map[int32]string{
+		0: "KEEP_REASON_UNSPECIFIED",
+		1: "KEEP_REASON_SEVERITY",
+		2: "KEEP_REASON_NOVEL",
+		3: "KEEP_REASON_SPIKE",
+		4: "KEEP_REASON_WARMUP",
+		5: "KEEP_REASON_LOG2",
+		6: "KEEP_REASON_STEADYK",
+		7: "KEEP_REASON_BUDGET",
+	}
+	KeepReason_value = map[string]int32{
+		"KEEP_REASON_UNSPECIFIED": 0,
+		"KEEP_REASON_SEVERITY":    1,
+		"KEEP_REASON_NOVEL":       2,
+		"KEEP_REASON_SPIKE":       3,
+		"KEEP_REASON_WARMUP":      4,
+		"KEEP_REASON_LOG2":        5,
+		"KEEP_REASON_STEADYK":     6,
+		"KEEP_REASON_BUDGET":      7,
+	}
+)
+
+func (x KeepReason) Enum() *KeepReason {
+	p := new(KeepReason)
+	*p = x
+	return p
+}
+
+func (x KeepReason) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (KeepReason) Descriptor() protoreflect.EnumDescriptor {
+	return file_sampler_v1_sampler_proto_enumTypes[2].Descriptor()
+}
+
+func (KeepReason) Type() protoreflect.EnumType {
+	return &file_sampler_v1_sampler_proto_enumTypes[2]
+}
+
+func (x KeepReason) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use KeepReason.Descriptor instead.
+func (KeepReason) EnumDescriptor() ([]byte, []int) {
+	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{2}
+}
+
 type DecisionRequest struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	Timestamp *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	// Keyed labels used in policy decisions (e.g., service, env, severity, namespace).
-	Labels map[string]string `protobuf:"bytes,2,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Template identity for this line.
-	TemplateId string `protobuf:"bytes,3,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
-	// Normalized severity also provided explicitly.
-	Severity      v1.Severity `protobuf:"varint,4,opt,name=severity,proto3,enum=common.v1.Severity" json:"severity,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Index of the input record in the caller's batch (explicit mapping).
+	RecordIndex int32 `protobuf:"varint,1,opt,name=record_index,json=recordIndex,proto3" json:"record_index,omitempty"`
+	// Event time of the log.
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	// Key labels used for policy & bucketing (e.g., service, env, severity, namespace).
+	Labels map[string]string `protobuf:"bytes,3,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Template identity produced by the Miner.
+	TemplateId string `protobuf:"bytes,4,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
+	// Normalized severity for convenience (also expected in labels["severity"]).
+	Severity Severity `protobuf:"varint,5,opt,name=severity,proto3,enum=sampler.v1.Severity" json:"severity,omitempty"`
+	// Optional multi-tenant routing key (may be empty if single-tenant).
+	TenantId      string `protobuf:"bytes,6,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -67,6 +244,13 @@ func (*DecisionRequest) Descriptor() ([]byte, []int) {
 	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{0}
 }
 
+func (x *DecisionRequest) GetRecordIndex() int32 {
+	if x != nil {
+		return x.RecordIndex
+	}
+	return 0
+}
+
 func (x *DecisionRequest) GetTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.Timestamp
@@ -88,30 +272,105 @@ func (x *DecisionRequest) GetTemplateId() string {
 	return ""
 }
 
-func (x *DecisionRequest) GetSeverity() v1.Severity {
+func (x *DecisionRequest) GetSeverity() Severity {
 	if x != nil {
 		return x.Severity
 	}
-	return v1.Severity(0)
+	return Severity_SEVERITY_UNSPECIFIED
 }
 
-// Decision result for a single line.
+func (x *DecisionRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+// Rolling counters used for transparency and UI.
+type WindowCounts struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Count_10M     uint64                 `protobuf:"varint,1,opt,name=count_10m,json=count10m,proto3" json:"count_10m,omitempty"`
+	Count_1H      uint64                 `protobuf:"varint,2,opt,name=count_1h,json=count1h,proto3" json:"count_1h,omitempty"`
+	Count_24H     uint64                 `protobuf:"varint,3,opt,name=count_24h,json=count24h,proto3" json:"count_24h,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WindowCounts) Reset() {
+	*x = WindowCounts{}
+	mi := &file_sampler_v1_sampler_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WindowCounts) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WindowCounts) ProtoMessage() {}
+
+func (x *WindowCounts) ProtoReflect() protoreflect.Message {
+	mi := &file_sampler_v1_sampler_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WindowCounts.ProtoReflect.Descriptor instead.
+func (*WindowCounts) Descriptor() ([]byte, []int) {
+	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *WindowCounts) GetCount_10M() uint64 {
+	if x != nil {
+		return x.Count_10M
+	}
+	return 0
+}
+
+func (x *WindowCounts) GetCount_1H() uint64 {
+	if x != nil {
+		return x.Count_1H
+	}
+	return 0
+}
+
+func (x *WindowCounts) GetCount_24H() uint64 {
+	if x != nil {
+		return x.Count_24H
+	}
+	return 0
+}
+
 type Decision struct {
-	state  protoimpl.MessageState `protogen:"open.v1"`
-	Action v1.Action              `protobuf:"varint,1,opt,name=action,proto3,enum=common.v1.Action" json:"action,omitempty"`
-	// If kept, why it was kept (policy ladder reason).
-	KeepReason v1.KeepReason `protobuf:"varint,2,opt,name=keep_reason,json=keepReason,proto3,enum=common.v1.KeepReason" json:"keep_reason,omitempty"`
-	// Rolling counters (for transparency & UI).
-	Counters *v1.WindowCounts `protobuf:"bytes,3,opt,name=counters,proto3" json:"counters,omitempty"`
-	// Optional debug notes (not for hot path parsing).
-	Note          string `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Echo of the input record_index for alignment.
+	RecordIndex int32 `protobuf:"varint,1,opt,name=record_index,json=recordIndex,proto3" json:"record_index,omitempty"`
+	// Action to take.
+	Action Action `protobuf:"varint,2,opt,name=action,proto3,enum=sampler.v1.Action" json:"action,omitempty"`
+	// Why it was kept (or which rule would have applied if suppressed).
+	KeepReason KeepReason `protobuf:"varint,3,opt,name=keep_reason,json=keepReason,proto3,enum=sampler.v1.KeepReason" json:"keep_reason,omitempty"`
+	// Rolling counts for this (template_id, service, env, severity, ...).
+	Counters *WindowCounts `protobuf:"bytes,4,opt,name=counters,proto3" json:"counters,omitempty"`
+	// Effective sampling rate (1 = keep-all; 10 = keep 1 in 10).
+	// This is advisory metadata for UIs and audits.
+	SampleRate uint32 `protobuf:"varint,5,opt,name=sample_rate,json=sampleRate,proto3" json:"sample_rate,omitempty"`
+	// Policy/version identifier that produced the decision.
+	PolicyVersion string `protobuf:"bytes,6,opt,name=policy_version,json=policyVersion,proto3" json:"policy_version,omitempty"`
+	// Optional human-readable note for debugging (not for parsing).
+	Note          string `protobuf:"bytes,7,opt,name=note,proto3" json:"note,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Decision) Reset() {
 	*x = Decision{}
-	mi := &file_sampler_v1_sampler_proto_msgTypes[1]
+	mi := &file_sampler_v1_sampler_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -123,7 +382,7 @@ func (x *Decision) String() string {
 func (*Decision) ProtoMessage() {}
 
 func (x *Decision) ProtoReflect() protoreflect.Message {
-	mi := &file_sampler_v1_sampler_proto_msgTypes[1]
+	mi := &file_sampler_v1_sampler_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -136,28 +395,49 @@ func (x *Decision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Decision.ProtoReflect.Descriptor instead.
 func (*Decision) Descriptor() ([]byte, []int) {
-	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{1}
+	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *Decision) GetAction() v1.Action {
+func (x *Decision) GetRecordIndex() int32 {
+	if x != nil {
+		return x.RecordIndex
+	}
+	return 0
+}
+
+func (x *Decision) GetAction() Action {
 	if x != nil {
 		return x.Action
 	}
-	return v1.Action(0)
+	return Action_ACTION_UNSPECIFIED
 }
 
-func (x *Decision) GetKeepReason() v1.KeepReason {
+func (x *Decision) GetKeepReason() KeepReason {
 	if x != nil {
 		return x.KeepReason
 	}
-	return v1.KeepReason(0)
+	return KeepReason_KEEP_REASON_UNSPECIFIED
 }
 
-func (x *Decision) GetCounters() *v1.WindowCounts {
+func (x *Decision) GetCounters() *WindowCounts {
 	if x != nil {
 		return x.Counters
 	}
 	return nil
+}
+
+func (x *Decision) GetSampleRate() uint32 {
+	if x != nil {
+		return x.SampleRate
+	}
+	return 0
+}
+
+func (x *Decision) GetPolicyVersion() string {
+	if x != nil {
+		return x.PolicyVersion
+	}
+	return ""
 }
 
 func (x *Decision) GetNote() string {
@@ -167,7 +447,6 @@ func (x *Decision) GetNote() string {
 	return ""
 }
 
-// Batch version for throughput.
 type DecisionBatchRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*DecisionRequest     `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -177,7 +456,7 @@ type DecisionBatchRequest struct {
 
 func (x *DecisionBatchRequest) Reset() {
 	*x = DecisionBatchRequest{}
-	mi := &file_sampler_v1_sampler_proto_msgTypes[2]
+	mi := &file_sampler_v1_sampler_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -189,7 +468,7 @@ func (x *DecisionBatchRequest) String() string {
 func (*DecisionBatchRequest) ProtoMessage() {}
 
 func (x *DecisionBatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sampler_v1_sampler_proto_msgTypes[2]
+	mi := &file_sampler_v1_sampler_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -202,7 +481,7 @@ func (x *DecisionBatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionBatchRequest.ProtoReflect.Descriptor instead.
 func (*DecisionBatchRequest) Descriptor() ([]byte, []int) {
-	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{2}
+	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *DecisionBatchRequest) GetItems() []*DecisionRequest {
@@ -221,7 +500,7 @@ type DecisionBatchResponse struct {
 
 func (x *DecisionBatchResponse) Reset() {
 	*x = DecisionBatchResponse{}
-	mi := &file_sampler_v1_sampler_proto_msgTypes[3]
+	mi := &file_sampler_v1_sampler_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -233,7 +512,7 @@ func (x *DecisionBatchResponse) String() string {
 func (*DecisionBatchResponse) ProtoMessage() {}
 
 func (x *DecisionBatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sampler_v1_sampler_proto_msgTypes[3]
+	mi := &file_sampler_v1_sampler_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -246,7 +525,7 @@ func (x *DecisionBatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionBatchResponse.ProtoReflect.Descriptor instead.
 func (*DecisionBatchResponse) Descriptor() ([]byte, []int) {
-	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{3}
+	return file_sampler_v1_sampler_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DecisionBatchResponse) GetItems() []*Decision {
@@ -261,28 +540,59 @@ var File_sampler_v1_sampler_proto protoreflect.FileDescriptor
 const file_sampler_v1_sampler_proto_rawDesc = "" +
 	"\n" +
 	"\x18sampler/v1/sampler.proto\x12\n" +
-	"sampler.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16common/v1/common.proto\"\x99\x02\n" +
-	"\x0fDecisionRequest\x128\n" +
-	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12?\n" +
-	"\x06labels\x18\x02 \x03(\v2'.sampler.v1.DecisionRequest.LabelsEntryR\x06labels\x12\x1f\n" +
-	"\vtemplate_id\x18\x03 \x01(\tR\n" +
-	"templateId\x12/\n" +
-	"\bseverity\x18\x04 \x01(\x0e2\x13.common.v1.SeverityR\bseverity\x1a9\n" +
+	"sampler.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xda\x02\n" +
+	"\x0fDecisionRequest\x12!\n" +
+	"\frecord_index\x18\x01 \x01(\x05R\vrecordIndex\x128\n" +
+	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12?\n" +
+	"\x06labels\x18\x03 \x03(\v2'.sampler.v1.DecisionRequest.LabelsEntryR\x06labels\x12\x1f\n" +
+	"\vtemplate_id\x18\x04 \x01(\tR\n" +
+	"templateId\x120\n" +
+	"\bseverity\x18\x05 \x01(\x0e2\x14.sampler.v1.SeverityR\bseverity\x12\x1b\n" +
+	"\ttenant_id\x18\x06 \x01(\tR\btenantId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb6\x01\n" +
-	"\bDecision\x12)\n" +
-	"\x06action\x18\x01 \x01(\x0e2\x11.common.v1.ActionR\x06action\x126\n" +
-	"\vkeep_reason\x18\x02 \x01(\x0e2\x15.common.v1.KeepReasonR\n" +
-	"keepReason\x123\n" +
-	"\bcounters\x18\x03 \x01(\v2\x17.common.v1.WindowCountsR\bcounters\x12\x12\n" +
-	"\x04note\x18\x04 \x01(\tR\x04note\"I\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"c\n" +
+	"\fWindowCounts\x12\x1b\n" +
+	"\tcount_10m\x18\x01 \x01(\x04R\bcount10m\x12\x19\n" +
+	"\bcount_1h\x18\x02 \x01(\x04R\acount1h\x12\x1b\n" +
+	"\tcount_24h\x18\x03 \x01(\x04R\bcount24h\"\xa4\x02\n" +
+	"\bDecision\x12!\n" +
+	"\frecord_index\x18\x01 \x01(\x05R\vrecordIndex\x12*\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x12.sampler.v1.ActionR\x06action\x127\n" +
+	"\vkeep_reason\x18\x03 \x01(\x0e2\x16.sampler.v1.KeepReasonR\n" +
+	"keepReason\x124\n" +
+	"\bcounters\x18\x04 \x01(\v2\x18.sampler.v1.WindowCountsR\bcounters\x12\x1f\n" +
+	"\vsample_rate\x18\x05 \x01(\rR\n" +
+	"sampleRate\x12%\n" +
+	"\x0epolicy_version\x18\x06 \x01(\tR\rpolicyVersion\x12\x12\n" +
+	"\x04note\x18\a \x01(\tR\x04note\"I\n" +
 	"\x14DecisionBatchRequest\x121\n" +
 	"\x05items\x18\x01 \x03(\v2\x1b.sampler.v1.DecisionRequestR\x05items\"C\n" +
 	"\x15DecisionBatchResponse\x12*\n" +
-	"\x05items\x18\x01 \x03(\v2\x14.sampler.v1.DecisionR\x05items2\xa4\x01\n" +
-	"\x0eSamplerService\x12>\n" +
-	"\tDecideOne\x12\x1b.sampler.v1.DecisionRequest\x1a\x14.sampler.v1.Decision\x12R\n" +
+	"\x05items\x18\x01 \x03(\v2\x14.sampler.v1.DecisionR\x05items*\x86\x01\n" +
+	"\bSeverity\x12\x18\n" +
+	"\x14SEVERITY_UNSPECIFIED\x10\x00\x12\x12\n" +
+	"\x0eSEVERITY_DEBUG\x10\x01\x12\x11\n" +
+	"\rSEVERITY_INFO\x10\x02\x12\x11\n" +
+	"\rSEVERITY_WARN\x10\x03\x12\x12\n" +
+	"\x0eSEVERITY_ERROR\x10\x04\x12\x12\n" +
+	"\x0eSEVERITY_FATAL\x10\x05*F\n" +
+	"\x06Action\x12\x16\n" +
+	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x0f\n" +
+	"\vACTION_KEEP\x10\x01\x12\x13\n" +
+	"\x0fACTION_SUPPRESS\x10\x02*\xd0\x01\n" +
+	"\n" +
+	"KeepReason\x12\x1b\n" +
+	"\x17KEEP_REASON_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14KEEP_REASON_SEVERITY\x10\x01\x12\x15\n" +
+	"\x11KEEP_REASON_NOVEL\x10\x02\x12\x15\n" +
+	"\x11KEEP_REASON_SPIKE\x10\x03\x12\x16\n" +
+	"\x12KEEP_REASON_WARMUP\x10\x04\x12\x14\n" +
+	"\x10KEEP_REASON_LOG2\x10\x05\x12\x17\n" +
+	"\x13KEEP_REASON_STEADYK\x10\x06\x12\x16\n" +
+	"\x12KEEP_REASON_BUDGET\x10\a2\xa1\x01\n" +
+	"\x0eSamplerService\x12;\n" +
+	"\x06Decide\x12\x1b.sampler.v1.DecisionRequest\x1a\x14.sampler.v1.Decision\x12R\n" +
 	"\vDecideBatch\x12 .sampler.v1.DecisionBatchRequest\x1a!.sampler.v1.DecisionBatchResponseBDZBgithub.com/kumarabd/ingestion-plane/contracts/sampler/v1;samplerv1b\x06proto3"
 
 var (
@@ -297,32 +607,33 @@ func file_sampler_v1_sampler_proto_rawDescGZIP() []byte {
 	return file_sampler_v1_sampler_proto_rawDescData
 }
 
-var file_sampler_v1_sampler_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_sampler_v1_sampler_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_sampler_v1_sampler_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_sampler_v1_sampler_proto_goTypes = []any{
-	(*DecisionRequest)(nil),       // 0: sampler.v1.DecisionRequest
-	(*Decision)(nil),              // 1: sampler.v1.Decision
-	(*DecisionBatchRequest)(nil),  // 2: sampler.v1.DecisionBatchRequest
-	(*DecisionBatchResponse)(nil), // 3: sampler.v1.DecisionBatchResponse
-	nil,                           // 4: sampler.v1.DecisionRequest.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
-	(v1.Severity)(0),              // 6: common.v1.Severity
-	(v1.Action)(0),                // 7: common.v1.Action
-	(v1.KeepReason)(0),            // 8: common.v1.KeepReason
-	(*v1.WindowCounts)(nil),       // 9: common.v1.WindowCounts
+	(Severity)(0),                 // 0: sampler.v1.Severity
+	(Action)(0),                   // 1: sampler.v1.Action
+	(KeepReason)(0),               // 2: sampler.v1.KeepReason
+	(*DecisionRequest)(nil),       // 3: sampler.v1.DecisionRequest
+	(*WindowCounts)(nil),          // 4: sampler.v1.WindowCounts
+	(*Decision)(nil),              // 5: sampler.v1.Decision
+	(*DecisionBatchRequest)(nil),  // 6: sampler.v1.DecisionBatchRequest
+	(*DecisionBatchResponse)(nil), // 7: sampler.v1.DecisionBatchResponse
+	nil,                           // 8: sampler.v1.DecisionRequest.LabelsEntry
+	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
 }
 var file_sampler_v1_sampler_proto_depIdxs = []int32{
-	5,  // 0: sampler.v1.DecisionRequest.timestamp:type_name -> google.protobuf.Timestamp
-	4,  // 1: sampler.v1.DecisionRequest.labels:type_name -> sampler.v1.DecisionRequest.LabelsEntry
-	6,  // 2: sampler.v1.DecisionRequest.severity:type_name -> common.v1.Severity
-	7,  // 3: sampler.v1.Decision.action:type_name -> common.v1.Action
-	8,  // 4: sampler.v1.Decision.keep_reason:type_name -> common.v1.KeepReason
-	9,  // 5: sampler.v1.Decision.counters:type_name -> common.v1.WindowCounts
-	0,  // 6: sampler.v1.DecisionBatchRequest.items:type_name -> sampler.v1.DecisionRequest
-	1,  // 7: sampler.v1.DecisionBatchResponse.items:type_name -> sampler.v1.Decision
-	0,  // 8: sampler.v1.SamplerService.DecideOne:input_type -> sampler.v1.DecisionRequest
-	2,  // 9: sampler.v1.SamplerService.DecideBatch:input_type -> sampler.v1.DecisionBatchRequest
-	1,  // 10: sampler.v1.SamplerService.DecideOne:output_type -> sampler.v1.Decision
-	3,  // 11: sampler.v1.SamplerService.DecideBatch:output_type -> sampler.v1.DecisionBatchResponse
+	9,  // 0: sampler.v1.DecisionRequest.timestamp:type_name -> google.protobuf.Timestamp
+	8,  // 1: sampler.v1.DecisionRequest.labels:type_name -> sampler.v1.DecisionRequest.LabelsEntry
+	0,  // 2: sampler.v1.DecisionRequest.severity:type_name -> sampler.v1.Severity
+	1,  // 3: sampler.v1.Decision.action:type_name -> sampler.v1.Action
+	2,  // 4: sampler.v1.Decision.keep_reason:type_name -> sampler.v1.KeepReason
+	4,  // 5: sampler.v1.Decision.counters:type_name -> sampler.v1.WindowCounts
+	3,  // 6: sampler.v1.DecisionBatchRequest.items:type_name -> sampler.v1.DecisionRequest
+	5,  // 7: sampler.v1.DecisionBatchResponse.items:type_name -> sampler.v1.Decision
+	3,  // 8: sampler.v1.SamplerService.Decide:input_type -> sampler.v1.DecisionRequest
+	6,  // 9: sampler.v1.SamplerService.DecideBatch:input_type -> sampler.v1.DecisionBatchRequest
+	5,  // 10: sampler.v1.SamplerService.Decide:output_type -> sampler.v1.Decision
+	7,  // 11: sampler.v1.SamplerService.DecideBatch:output_type -> sampler.v1.DecisionBatchResponse
 	10, // [10:12] is the sub-list for method output_type
 	8,  // [8:10] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
@@ -340,13 +651,14 @@ func file_sampler_v1_sampler_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sampler_v1_sampler_proto_rawDesc), len(file_sampler_v1_sampler_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   5,
+			NumEnums:      3,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_sampler_v1_sampler_proto_goTypes,
 		DependencyIndexes: file_sampler_v1_sampler_proto_depIdxs,
+		EnumInfos:         file_sampler_v1_sampler_proto_enumTypes,
 		MessageInfos:      file_sampler_v1_sampler_proto_msgTypes,
 	}.Build()
 	File_sampler_v1_sampler_proto = out.File

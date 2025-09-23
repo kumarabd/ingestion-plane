@@ -16,6 +16,38 @@
     "application/json"
   ],
   "paths": {
+    "/sampler.v1.SamplerService/Decide": {
+      "post": {
+        "operationId": "SamplerService_Decide",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1Decision"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1DecisionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "SamplerService"
+        ]
+      }
+    },
     "/sampler.v1.SamplerService/DecideBatch": {
       "post": {
         "operationId": "SamplerService_DecideBatch",
@@ -36,44 +68,10 @@
         "parameters": [
           {
             "name": "body",
-            "description": "Batch version for throughput.",
             "in": "body",
             "required": true,
             "schema": {
               "$ref": "#/definitions/v1DecisionBatchRequest"
-            }
-          }
-        ],
-        "tags": [
-          "SamplerService"
-        ]
-      }
-    },
-    "/sampler.v1.SamplerService/DecideOne": {
-      "post": {
-        "operationId": "SamplerService_DecideOne",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1Decision"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "body",
-            "description": "Decision request combines miner output + key labels used for policy.",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/v1DecisionRequest"
             }
           }
         ],
@@ -112,7 +110,7 @@
         }
       }
     },
-    "v1Action": {
+    "samplerv1Action": {
       "type": "string",
       "enum": [
         "ACTION_UNSPECIFIED",
@@ -120,28 +118,88 @@
         "ACTION_SUPPRESS"
       ],
       "default": "ACTION_UNSPECIFIED",
-      "description": "Sampler decision: keep or suppress."
+      "description": "The action to take for this record."
+    },
+    "samplerv1KeepReason": {
+      "type": "string",
+      "enum": [
+        "KEEP_REASON_UNSPECIFIED",
+        "KEEP_REASON_SEVERITY",
+        "KEEP_REASON_NOVEL",
+        "KEEP_REASON_SPIKE",
+        "KEEP_REASON_WARMUP",
+        "KEEP_REASON_LOG2",
+        "KEEP_REASON_STEADYK",
+        "KEEP_REASON_BUDGET"
+      ],
+      "default": "KEEP_REASON_UNSPECIFIED",
+      "description": "First-match-wins reason from the policy ladder.\n\n - KEEP_REASON_SEVERITY: error/fatal floors\n - KEEP_REASON_NOVEL: new template in novelty window\n - KEEP_REASON_SPIKE: spike-aware relaxation\n - KEEP_REASON_WARMUP: keep-first-N\n - KEEP_REASON_LOG2: 1,2,4,8,16...\n - KEEP_REASON_STEADYK: every Kth\n - KEEP_REASON_BUDGET: budget guard adjustment"
+    },
+    "samplerv1Severity": {
+      "type": "string",
+      "enum": [
+        "SEVERITY_UNSPECIFIED",
+        "SEVERITY_DEBUG",
+        "SEVERITY_INFO",
+        "SEVERITY_WARN",
+        "SEVERITY_ERROR",
+        "SEVERITY_FATAL"
+      ],
+      "default": "SEVERITY_UNSPECIFIED",
+      "description": "Canonical severities understood by policies."
+    },
+    "samplerv1WindowCounts": {
+      "type": "object",
+      "properties": {
+        "count10m": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "count1h": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "count24h": {
+          "type": "string",
+          "format": "uint64"
+        }
+      },
+      "description": "Rolling counters used for transparency and UI."
     },
     "v1Decision": {
       "type": "object",
       "properties": {
+        "recordIndex": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Echo of the input record_index for alignment."
+        },
         "action": {
-          "$ref": "#/definitions/v1Action"
+          "$ref": "#/definitions/samplerv1Action",
+          "description": "Action to take."
         },
         "keepReason": {
-          "$ref": "#/definitions/v1KeepReason",
-          "description": "If kept, why it was kept (policy ladder reason)."
+          "$ref": "#/definitions/samplerv1KeepReason",
+          "description": "Why it was kept (or which rule would have applied if suppressed)."
         },
         "counters": {
-          "$ref": "#/definitions/v1WindowCounts",
-          "description": "Rolling counters (for transparency \u0026 UI)."
+          "$ref": "#/definitions/samplerv1WindowCounts",
+          "description": "Rolling counts for this (template_id, service, env, severity, ...)."
+        },
+        "sampleRate": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Effective sampling rate (1 = keep-all; 10 = keep 1 in 10).\nThis is advisory metadata for UIs and audits."
+        },
+        "policyVersion": {
+          "type": "string",
+          "description": "Policy/version identifier that produced the decision."
         },
         "note": {
           "type": "string",
-          "description": "Optional debug notes (not for hot path parsing)."
+          "description": "Optional human-readable note for debugging (not for parsing)."
         }
-      },
-      "description": "Decision result for a single line."
+      }
     },
     "v1DecisionBatchRequest": {
       "type": "object",
@@ -153,8 +211,7 @@
             "$ref": "#/definitions/v1DecisionRequest"
           }
         }
-      },
-      "description": "Batch version for throughput."
+      }
     },
     "v1DecisionBatchResponse": {
       "type": "object",
@@ -171,73 +228,36 @@
     "v1DecisionRequest": {
       "type": "object",
       "properties": {
+        "recordIndex": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Index of the input record in the caller's batch (explicit mapping)."
+        },
         "timestamp": {
           "type": "string",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "Event time of the log."
         },
         "labels": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Keyed labels used in policy decisions (e.g., service, env, severity, namespace)."
+          "description": "Key labels used for policy \u0026 bucketing (e.g., service, env, severity, namespace)."
         },
         "templateId": {
           "type": "string",
-          "description": "Template identity for this line."
+          "description": "Template identity produced by the Miner."
         },
         "severity": {
-          "$ref": "#/definitions/v1Severity",
-          "description": "Normalized severity also provided explicitly."
-        }
-      },
-      "description": "Decision request combines miner output + key labels used for policy."
-    },
-    "v1KeepReason": {
-      "type": "string",
-      "enum": [
-        "KEEP_REASON_UNSPECIFIED",
-        "KEEP_REASON_SEVERITY",
-        "KEEP_REASON_NOVEL",
-        "KEEP_REASON_SPIKE",
-        "KEEP_REASON_WARMUP",
-        "KEEP_REASON_LOG2",
-        "KEEP_REASON_STEADYK",
-        "KEEP_REASON_BUDGET"
-      ],
-      "default": "KEEP_REASON_UNSPECIFIED",
-      "description": "Reason ladder for why a line was kept (first-match-wins policy).\n\n - KEEP_REASON_SEVERITY: error/fatal floor\n - KEEP_REASON_NOVEL: new template within novelty window\n - KEEP_REASON_SPIKE: spike-aware relaxation\n - KEEP_REASON_WARMUP: first N\n - KEEP_REASON_LOG2: 1,2,4,8,16...\n - KEEP_REASON_STEADYK: every Kth\n - KEEP_REASON_BUDGET: budget guard adjustment"
-    },
-    "v1Severity": {
-      "type": "string",
-      "enum": [
-        "SEVERITY_UNSPECIFIED",
-        "SEVERITY_DEBUG",
-        "SEVERITY_INFO",
-        "SEVERITY_WARN",
-        "SEVERITY_ERROR",
-        "SEVERITY_FATAL"
-      ],
-      "default": "SEVERITY_UNSPECIFIED",
-      "description": "Normalized severity. Keep mapping small; do not mirror every library level."
-    },
-    "v1WindowCounts": {
-      "type": "object",
-      "properties": {
-        "count10m": {
-          "type": "string",
-          "format": "uint64"
+          "$ref": "#/definitions/samplerv1Severity",
+          "description": "Normalized severity for convenience (also expected in labels[\"severity\"])."
         },
-        "count1h": {
+        "tenantId": {
           "type": "string",
-          "format": "uint64"
-        },
-        "count24h": {
-          "type": "string",
-          "format": "uint64"
+          "description": "Optional multi-tenant routing key (may be empty if single-tenant)."
         }
-      },
-      "description": "Generic time windows counters used in several APIs."
+      }
     }
   }
 }

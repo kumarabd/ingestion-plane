@@ -1,47 +1,99 @@
 syntax = "proto3";
 
-package indexfeed.v1;
+package indexcandidate.v1;
 
-option go_package = "github.com/kumarabd/ingestion-plane/contracts/indexfeed/v1;indexfeedv1";
+option go_package = "github.com/kumarabd/ingestion-plane/contracts/indexcandidate/v1;indexcandidatev1";
 
 import "google/protobuf/timestamp.proto";
-import "common/v1/common.proto";
 
-// Stats block carried with template events.
-message TemplateStats {
-  common.v1.WindowCounts windows = 1;
-  google.protobuf.Timestamp first_seen = 2;
-  google.protobuf.Timestamp last_seen  = 3;
+// -----------------------------------------------------------------------------
+// TemplateCandidate is a compact, PII-safe payload produced by the Gateway/Miner.
+// A Python Event-Builder consumes it (via gRPC or Kafka) to compute:
+//   - NEW / UPDATE / SPIKE decisions
+//   - Optional exemplars & anomaly metadata
+//   - Final TemplateEvent(s) for the IndexFeed
+//
+// Transport-agnostic:
+// - For Kafka/Redpanda, use (tenant + ":" + template_id) as the partition key.
+// - For gRPC, use the CandidateIngest service below (batch-friendly).
+// -----------------------------------------------------------------------------
+
+// Provenance of the canonical template in this candidate.
+enum Provenance {
+  PROVENANCE_UNSPECIFIED = 0;
+  PROVENANCE_CACHE       = 1; // found in template memory
+  PROVENANCE_HEURISTIC   = 2; // grouping-tree / non-LLM heuristic
+  PROVENANCE_LIBRELOG    = 3; // LibreLog / LLM-assisted synthesis
+  PROVENANCE_FALLBACK    = 4; // masked-preview → regex fallback
 }
 
-// Simple anomaly payload for spike events.
-message Anomaly {
-  string window = 1;           // e.g., "10m" or "1h"
-  double baseline_p95 = 2;     // baseline rate
-  double current_rate = 3;     // observed
-  double spike_factor = 4;     // current / baseline
+// Small, redacted exemplar (optional; bounded).
+message Exemplar {
+  string message = 1;                        // masked/redacted, truncated if needed
+  google.protobuf.Timestamp ts = 2;         // timestamp for context (optional)
+  string namespace = 3;                     // optional
+  string pod = 4;                           // optional
+  string stream = 5;                        // optional (stdout|stderr|file)
 }
 
-// Event published to the index-feed (Kafka/Redpanda/OTLP).
-message TemplateEvent {
-  common.v1.TemplateEventType type = 1;
+// Rolling activity stats used for ranking/aging and spike baselines.
+message RollingStats {
+  uint64 count_10m = 1;
+  uint64 count_1h  = 2;
+  uint64 count_24h = 3;
+}
 
-  string template_id = 2;
-  string template    = 3;
-  string regex       = 4;
+// The transport-agnostic candidate describing a mined template observation.
+message TemplateCandidate {
+  // ---- Identity & routing ----
+  string tenant      = 1;  // multi-tenant key; "default" if unused
+  string template_id = 2;  // stable id (hash of canonical template)
 
-  // Minimal labels for filtering in the semantic index.
-  map<string, string> labels = 5;
+  // ---- Canonical definition (PII-safe) ----
+  string template_text = 3;                 // e.g., "login success user=<int> ip=<ipv4>"
+  string regex         = 4;                 // regex derived from placeholders
+  map<string, string> labels = 5;           // low-card: service/env/severity/namespace
 
-  // Usage stats for ranking/aging.
-  TemplateStats stats = 6;
+  // ---- Activity & lifecycle context ----
+  RollingStats stats = 6;                   // recent counts
+  google.protobuf.Timestamp first_seen = 7; // as known by miner
+  google.protobuf.Timestamp last_seen  = 8; // last observation time
+  Provenance provenance = 9;                // where the canonicalization came from
 
-  // Optional bounded exemplars (masked).
-  repeated common.v1.Exemplar examples = 7;
+  // Version of the canonical definition (to help UPDATE debouncing downstream).
+  // Suggested: hash(template_text + "\n" + regex)
+  string template_version = 10;
 
-  // Present for TEMPLATE_SPIKE events.
-  Anomaly anomaly = 8;
+  // Optional exemplars (small, redacted, bounded).
+  repeated Exemplar exemplars = 11;
 
-  // Idempotency key for de-dupe on the consumer side.
-  string event_id = 9;
+  // When this candidate was produced on the producer side.
+  google.protobuf.Timestamp occurred_at = 12;
+
+  // Optional producer/debug hints (not for keying).
+  string source_service = 13;     // e.g., "gateway" or "miner"
+  string producer_instance = 14;  // hostname/pod (non-stable)
+
+  // Optional sequencing hint from producer (monotonic per tenant+template_id if available).
+  uint64 seq_no_hint = 15;
+}
+
+// Batch wrapper for higher throughput regardless of transport.
+message TemplateCandidateBatch {
+  repeated TemplateCandidate items = 1;
+}
+
+// ----------------------------- gRPC surface (optional) ------------------------
+// Use this if you choose gRPC between Gateway and Python Event-Builder.
+// For Kafka/Redpanda, publish TemplateCandidateBatch messages to a topic with
+// partition key (tenant + ":" + template_id).
+
+service CandidateIngest {
+  rpc Publish (TemplateCandidateBatch) returns (PublishAck);
+}
+
+message PublishAck {
+  uint32 accepted = 1;
+  uint32 rejected = 2;
+  string note     = 3;  // diagnostic for first rejection cause (optional)
 }

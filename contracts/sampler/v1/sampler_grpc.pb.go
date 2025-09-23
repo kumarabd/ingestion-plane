@@ -19,17 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SamplerService_DecideOne_FullMethodName   = "/sampler.v1.SamplerService/DecideOne"
+	SamplerService_Decide_FullMethodName      = "/sampler.v1.SamplerService/Decide"
 	SamplerService_DecideBatch_FullMethodName = "/sampler.v1.SamplerService/DecideBatch"
 )
 
 // SamplerServiceClient is the client API for SamplerService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// Sampler API - called by the gateway after mining.
 type SamplerServiceClient interface {
-	DecideOne(ctx context.Context, in *DecisionRequest, opts ...grpc.CallOption) (*Decision, error)
+	Decide(ctx context.Context, in *DecisionRequest, opts ...grpc.CallOption) (*Decision, error)
 	DecideBatch(ctx context.Context, in *DecisionBatchRequest, opts ...grpc.CallOption) (*DecisionBatchResponse, error)
 }
 
@@ -41,10 +39,10 @@ func NewSamplerServiceClient(cc grpc.ClientConnInterface) SamplerServiceClient {
 	return &samplerServiceClient{cc}
 }
 
-func (c *samplerServiceClient) DecideOne(ctx context.Context, in *DecisionRequest, opts ...grpc.CallOption) (*Decision, error) {
+func (c *samplerServiceClient) Decide(ctx context.Context, in *DecisionRequest, opts ...grpc.CallOption) (*Decision, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Decision)
-	err := c.cc.Invoke(ctx, SamplerService_DecideOne_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, SamplerService_Decide_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -64,10 +62,8 @@ func (c *samplerServiceClient) DecideBatch(ctx context.Context, in *DecisionBatc
 // SamplerServiceServer is the server API for SamplerService service.
 // All implementations must embed UnimplementedSamplerServiceServer
 // for forward compatibility.
-//
-// Sampler API - called by the gateway after mining.
 type SamplerServiceServer interface {
-	DecideOne(context.Context, *DecisionRequest) (*Decision, error)
+	Decide(context.Context, *DecisionRequest) (*Decision, error)
 	DecideBatch(context.Context, *DecisionBatchRequest) (*DecisionBatchResponse, error)
 	mustEmbedUnimplementedSamplerServiceServer()
 }
@@ -79,8 +75,8 @@ type SamplerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedSamplerServiceServer struct{}
 
-func (UnimplementedSamplerServiceServer) DecideOne(context.Context, *DecisionRequest) (*Decision, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DecideOne not implemented")
+func (UnimplementedSamplerServiceServer) Decide(context.Context, *DecisionRequest) (*Decision, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Decide not implemented")
 }
 func (UnimplementedSamplerServiceServer) DecideBatch(context.Context, *DecisionBatchRequest) (*DecisionBatchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DecideBatch not implemented")
@@ -106,20 +102,20 @@ func RegisterSamplerServiceServer(s grpc.ServiceRegistrar, srv SamplerServiceSer
 	s.RegisterService(&SamplerService_ServiceDesc, srv)
 }
 
-func _SamplerService_DecideOne_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _SamplerService_Decide_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DecisionRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SamplerServiceServer).DecideOne(ctx, in)
+		return srv.(SamplerServiceServer).Decide(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SamplerService_DecideOne_FullMethodName,
+		FullMethod: SamplerService_Decide_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SamplerServiceServer).DecideOne(ctx, req.(*DecisionRequest))
+		return srv.(SamplerServiceServer).Decide(ctx, req.(*DecisionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -150,8 +146,8 @@ var SamplerService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*SamplerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "DecideOne",
-			Handler:    _SamplerService_DecideOne_Handler,
+			MethodName: "Decide",
+			Handler:    _SamplerService_Decide_Handler,
 		},
 		{
 			MethodName: "DecideBatch",

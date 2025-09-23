@@ -4,10 +4,9 @@
 // 	protoc        v6.32.1
 // source: indexfeed/v1/indexfeed.proto
 
-package indexfeedv1
+package indexcandidatev1
 
 import (
-	v1 "github.com/kumarabd/ingestion-plane/contracts/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -23,93 +22,89 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Stats block carried with template events.
-type TemplateStats struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Windows       *v1.WindowCounts       `protobuf:"bytes,1,opt,name=windows,proto3" json:"windows,omitempty"`
-	FirstSeen     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=first_seen,json=firstSeen,proto3" json:"first_seen,omitempty"`
-	LastSeen      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
+// Provenance of the canonical template in this candidate.
+type Provenance int32
 
-func (x *TemplateStats) Reset() {
-	*x = TemplateStats{}
-	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
+const (
+	Provenance_PROVENANCE_UNSPECIFIED Provenance = 0
+	Provenance_PROVENANCE_CACHE       Provenance = 1 // found in template memory
+	Provenance_PROVENANCE_HEURISTIC   Provenance = 2 // grouping-tree / non-LLM heuristic
+	Provenance_PROVENANCE_LIBRELOG    Provenance = 3 // LibreLog / LLM-assisted synthesis
+	Provenance_PROVENANCE_FALLBACK    Provenance = 4 // masked-preview → regex fallback
+)
 
-func (x *TemplateStats) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TemplateStats) ProtoMessage() {}
-
-func (x *TemplateStats) ProtoReflect() protoreflect.Message {
-	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
+// Enum value maps for Provenance.
+var (
+	Provenance_name = map[int32]string{
+		0: "PROVENANCE_UNSPECIFIED",
+		1: "PROVENANCE_CACHE",
+		2: "PROVENANCE_HEURISTIC",
+		3: "PROVENANCE_LIBRELOG",
+		4: "PROVENANCE_FALLBACK",
 	}
-	return mi.MessageOf(x)
+	Provenance_value = map[string]int32{
+		"PROVENANCE_UNSPECIFIED": 0,
+		"PROVENANCE_CACHE":       1,
+		"PROVENANCE_HEURISTIC":   2,
+		"PROVENANCE_LIBRELOG":    3,
+		"PROVENANCE_FALLBACK":    4,
+	}
+)
+
+func (x Provenance) Enum() *Provenance {
+	p := new(Provenance)
+	*p = x
+	return p
 }
 
-// Deprecated: Use TemplateStats.ProtoReflect.Descriptor instead.
-func (*TemplateStats) Descriptor() ([]byte, []int) {
+func (x Provenance) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Provenance) Descriptor() protoreflect.EnumDescriptor {
+	return file_indexfeed_v1_indexfeed_proto_enumTypes[0].Descriptor()
+}
+
+func (Provenance) Type() protoreflect.EnumType {
+	return &file_indexfeed_v1_indexfeed_proto_enumTypes[0]
+}
+
+func (x Provenance) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Provenance.Descriptor instead.
+func (Provenance) EnumDescriptor() ([]byte, []int) {
 	return file_indexfeed_v1_indexfeed_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *TemplateStats) GetWindows() *v1.WindowCounts {
-	if x != nil {
-		return x.Windows
-	}
-	return nil
-}
-
-func (x *TemplateStats) GetFirstSeen() *timestamppb.Timestamp {
-	if x != nil {
-		return x.FirstSeen
-	}
-	return nil
-}
-
-func (x *TemplateStats) GetLastSeen() *timestamppb.Timestamp {
-	if x != nil {
-		return x.LastSeen
-	}
-	return nil
-}
-
-// Simple anomaly payload for spike events.
-type Anomaly struct {
+// Small, redacted exemplar (optional; bounded).
+type Exemplar struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Window        string                 `protobuf:"bytes,1,opt,name=window,proto3" json:"window,omitempty"`                                // e.g., "10m" or "1h"
-	BaselineP95   float64                `protobuf:"fixed64,2,opt,name=baseline_p95,json=baselineP95,proto3" json:"baseline_p95,omitempty"` // baseline rate
-	CurrentRate   float64                `protobuf:"fixed64,3,opt,name=current_rate,json=currentRate,proto3" json:"current_rate,omitempty"` // observed
-	SpikeFactor   float64                `protobuf:"fixed64,4,opt,name=spike_factor,json=spikeFactor,proto3" json:"spike_factor,omitempty"` // current / baseline
+	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`     // masked/redacted, truncated if needed
+	Ts            *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=ts,proto3" json:"ts,omitempty"`               // timestamp for context (optional)
+	Namespace     string                 `protobuf:"bytes,3,opt,name=namespace,proto3" json:"namespace,omitempty"` // optional
+	Pod           string                 `protobuf:"bytes,4,opt,name=pod,proto3" json:"pod,omitempty"`             // optional
+	Stream        string                 `protobuf:"bytes,5,opt,name=stream,proto3" json:"stream,omitempty"`       // optional (stdout|stderr|file)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *Anomaly) Reset() {
-	*x = Anomaly{}
-	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[1]
+func (x *Exemplar) Reset() {
+	*x = Exemplar{}
+	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Anomaly) String() string {
+func (x *Exemplar) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Anomaly) ProtoMessage() {}
+func (*Exemplar) ProtoMessage() {}
 
-func (x *Anomaly) ProtoReflect() protoreflect.Message {
-	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[1]
+func (x *Exemplar) ProtoReflect() protoreflect.Message {
+	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -120,74 +115,152 @@ func (x *Anomaly) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use Anomaly.ProtoReflect.Descriptor instead.
-func (*Anomaly) Descriptor() ([]byte, []int) {
-	return file_indexfeed_v1_indexfeed_proto_rawDescGZIP(), []int{1}
+// Deprecated: Use Exemplar.ProtoReflect.Descriptor instead.
+func (*Exemplar) Descriptor() ([]byte, []int) {
+	return file_indexfeed_v1_indexfeed_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Anomaly) GetWindow() string {
+func (x *Exemplar) GetMessage() string {
 	if x != nil {
-		return x.Window
+		return x.Message
 	}
 	return ""
 }
 
-func (x *Anomaly) GetBaselineP95() float64 {
+func (x *Exemplar) GetTs() *timestamppb.Timestamp {
 	if x != nil {
-		return x.BaselineP95
+		return x.Ts
 	}
-	return 0
+	return nil
 }
 
-func (x *Anomaly) GetCurrentRate() float64 {
+func (x *Exemplar) GetNamespace() string {
 	if x != nil {
-		return x.CurrentRate
+		return x.Namespace
 	}
-	return 0
+	return ""
 }
 
-func (x *Anomaly) GetSpikeFactor() float64 {
+func (x *Exemplar) GetPod() string {
 	if x != nil {
-		return x.SpikeFactor
+		return x.Pod
 	}
-	return 0
+	return ""
 }
 
-// Event published to the index-feed (Kafka/Redpanda/OTLP).
-type TemplateEvent struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	Type       v1.TemplateEventType   `protobuf:"varint,1,opt,name=type,proto3,enum=common.v1.TemplateEventType" json:"type,omitempty"`
-	TemplateId string                 `protobuf:"bytes,2,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"`
-	Template   string                 `protobuf:"bytes,3,opt,name=template,proto3" json:"template,omitempty"`
-	Regex      string                 `protobuf:"bytes,4,opt,name=regex,proto3" json:"regex,omitempty"`
-	// Minimal labels for filtering in the semantic index.
-	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Usage stats for ranking/aging.
-	Stats *TemplateStats `protobuf:"bytes,6,opt,name=stats,proto3" json:"stats,omitempty"`
-	// Optional bounded exemplars (masked).
-	Examples []*v1.Exemplar `protobuf:"bytes,7,rep,name=examples,proto3" json:"examples,omitempty"`
-	// Present for TEMPLATE_SPIKE events.
-	Anomaly *Anomaly `protobuf:"bytes,8,opt,name=anomaly,proto3" json:"anomaly,omitempty"`
-	// Idempotency key for de-dupe on the consumer side.
-	EventId       string `protobuf:"bytes,9,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+func (x *Exemplar) GetStream() string {
+	if x != nil {
+		return x.Stream
+	}
+	return ""
+}
+
+// Rolling activity stats used for ranking/aging and spike baselines.
+type RollingStats struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Count_10M     uint64                 `protobuf:"varint,1,opt,name=count_10m,json=count10m,proto3" json:"count_10m,omitempty"`
+	Count_1H      uint64                 `protobuf:"varint,2,opt,name=count_1h,json=count1h,proto3" json:"count_1h,omitempty"`
+	Count_24H     uint64                 `protobuf:"varint,3,opt,name=count_24h,json=count24h,proto3" json:"count_24h,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *TemplateEvent) Reset() {
-	*x = TemplateEvent{}
+func (x *RollingStats) Reset() {
+	*x = RollingStats{}
+	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RollingStats) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RollingStats) ProtoMessage() {}
+
+func (x *RollingStats) ProtoReflect() protoreflect.Message {
+	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RollingStats.ProtoReflect.Descriptor instead.
+func (*RollingStats) Descriptor() ([]byte, []int) {
+	return file_indexfeed_v1_indexfeed_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RollingStats) GetCount_10M() uint64 {
+	if x != nil {
+		return x.Count_10M
+	}
+	return 0
+}
+
+func (x *RollingStats) GetCount_1H() uint64 {
+	if x != nil {
+		return x.Count_1H
+	}
+	return 0
+}
+
+func (x *RollingStats) GetCount_24H() uint64 {
+	if x != nil {
+		return x.Count_24H
+	}
+	return 0
+}
+
+// The transport-agnostic candidate describing a mined template observation.
+type TemplateCandidate struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ---- Identity & routing ----
+	Tenant     string `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`                           // multi-tenant key; "default" if unused
+	TemplateId string `protobuf:"bytes,2,opt,name=template_id,json=templateId,proto3" json:"template_id,omitempty"` // stable id (hash of canonical template)
+	// ---- Canonical definition (PII-safe) ----
+	TemplateText string            `protobuf:"bytes,3,opt,name=template_text,json=templateText,proto3" json:"template_text,omitempty"`                                           // e.g., "login success user=<int> ip=<ipv4>"
+	Regex        string            `protobuf:"bytes,4,opt,name=regex,proto3" json:"regex,omitempty"`                                                                             // regex derived from placeholders
+	Labels       map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // low-card: service/env/severity/namespace
+	// ---- Activity & lifecycle context ----
+	Stats      *RollingStats          `protobuf:"bytes,6,opt,name=stats,proto3" json:"stats,omitempty"`                                              // recent counts
+	FirstSeen  *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=first_seen,json=firstSeen,proto3" json:"first_seen,omitempty"`                     // as known by miner
+	LastSeen   *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=last_seen,json=lastSeen,proto3" json:"last_seen,omitempty"`                        // last observation time
+	Provenance Provenance             `protobuf:"varint,9,opt,name=provenance,proto3,enum=indexcandidate.v1.Provenance" json:"provenance,omitempty"` // where the canonicalization came from
+	// Version of the canonical definition (to help UPDATE debouncing downstream).
+	// Suggested: hash(template_text + "\n" + regex)
+	TemplateVersion string `protobuf:"bytes,10,opt,name=template_version,json=templateVersion,proto3" json:"template_version,omitempty"`
+	// Optional exemplars (small, redacted, bounded).
+	Exemplars []*Exemplar `protobuf:"bytes,11,rep,name=exemplars,proto3" json:"exemplars,omitempty"`
+	// When this candidate was produced on the producer side.
+	OccurredAt *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	// Optional producer/debug hints (not for keying).
+	SourceService    string `protobuf:"bytes,13,opt,name=source_service,json=sourceService,proto3" json:"source_service,omitempty"`          // e.g., "gateway" or "miner"
+	ProducerInstance string `protobuf:"bytes,14,opt,name=producer_instance,json=producerInstance,proto3" json:"producer_instance,omitempty"` // hostname/pod (non-stable)
+	// Optional sequencing hint from producer (monotonic per tenant+template_id if available).
+	SeqNoHint     uint64 `protobuf:"varint,15,opt,name=seq_no_hint,json=seqNoHint,proto3" json:"seq_no_hint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TemplateCandidate) Reset() {
+	*x = TemplateCandidate{}
 	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *TemplateEvent) String() string {
+func (x *TemplateCandidate) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*TemplateEvent) ProtoMessage() {}
+func (*TemplateCandidate) ProtoMessage() {}
 
-func (x *TemplateEvent) ProtoReflect() protoreflect.Message {
+func (x *TemplateCandidate) ProtoReflect() protoreflect.Message {
 	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -199,70 +272,217 @@ func (x *TemplateEvent) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use TemplateEvent.ProtoReflect.Descriptor instead.
-func (*TemplateEvent) Descriptor() ([]byte, []int) {
+// Deprecated: Use TemplateCandidate.ProtoReflect.Descriptor instead.
+func (*TemplateCandidate) Descriptor() ([]byte, []int) {
 	return file_indexfeed_v1_indexfeed_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *TemplateEvent) GetType() v1.TemplateEventType {
+func (x *TemplateCandidate) GetTenant() string {
 	if x != nil {
-		return x.Type
+		return x.Tenant
 	}
-	return v1.TemplateEventType(0)
+	return ""
 }
 
-func (x *TemplateEvent) GetTemplateId() string {
+func (x *TemplateCandidate) GetTemplateId() string {
 	if x != nil {
 		return x.TemplateId
 	}
 	return ""
 }
 
-func (x *TemplateEvent) GetTemplate() string {
+func (x *TemplateCandidate) GetTemplateText() string {
 	if x != nil {
-		return x.Template
+		return x.TemplateText
 	}
 	return ""
 }
 
-func (x *TemplateEvent) GetRegex() string {
+func (x *TemplateCandidate) GetRegex() string {
 	if x != nil {
 		return x.Regex
 	}
 	return ""
 }
 
-func (x *TemplateEvent) GetLabels() map[string]string {
+func (x *TemplateCandidate) GetLabels() map[string]string {
 	if x != nil {
 		return x.Labels
 	}
 	return nil
 }
 
-func (x *TemplateEvent) GetStats() *TemplateStats {
+func (x *TemplateCandidate) GetStats() *RollingStats {
 	if x != nil {
 		return x.Stats
 	}
 	return nil
 }
 
-func (x *TemplateEvent) GetExamples() []*v1.Exemplar {
+func (x *TemplateCandidate) GetFirstSeen() *timestamppb.Timestamp {
 	if x != nil {
-		return x.Examples
+		return x.FirstSeen
 	}
 	return nil
 }
 
-func (x *TemplateEvent) GetAnomaly() *Anomaly {
+func (x *TemplateCandidate) GetLastSeen() *timestamppb.Timestamp {
 	if x != nil {
-		return x.Anomaly
+		return x.LastSeen
 	}
 	return nil
 }
 
-func (x *TemplateEvent) GetEventId() string {
+func (x *TemplateCandidate) GetProvenance() Provenance {
 	if x != nil {
-		return x.EventId
+		return x.Provenance
+	}
+	return Provenance_PROVENANCE_UNSPECIFIED
+}
+
+func (x *TemplateCandidate) GetTemplateVersion() string {
+	if x != nil {
+		return x.TemplateVersion
+	}
+	return ""
+}
+
+func (x *TemplateCandidate) GetExemplars() []*Exemplar {
+	if x != nil {
+		return x.Exemplars
+	}
+	return nil
+}
+
+func (x *TemplateCandidate) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
+func (x *TemplateCandidate) GetSourceService() string {
+	if x != nil {
+		return x.SourceService
+	}
+	return ""
+}
+
+func (x *TemplateCandidate) GetProducerInstance() string {
+	if x != nil {
+		return x.ProducerInstance
+	}
+	return ""
+}
+
+func (x *TemplateCandidate) GetSeqNoHint() uint64 {
+	if x != nil {
+		return x.SeqNoHint
+	}
+	return 0
+}
+
+// Batch wrapper for higher throughput regardless of transport.
+type TemplateCandidateBatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*TemplateCandidate   `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TemplateCandidateBatch) Reset() {
+	*x = TemplateCandidateBatch{}
+	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TemplateCandidateBatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TemplateCandidateBatch) ProtoMessage() {}
+
+func (x *TemplateCandidateBatch) ProtoReflect() protoreflect.Message {
+	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TemplateCandidateBatch.ProtoReflect.Descriptor instead.
+func (*TemplateCandidateBatch) Descriptor() ([]byte, []int) {
+	return file_indexfeed_v1_indexfeed_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *TemplateCandidateBatch) GetItems() []*TemplateCandidate {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type PublishAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      uint32                 `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Rejected      uint32                 `protobuf:"varint,2,opt,name=rejected,proto3" json:"rejected,omitempty"`
+	Note          string                 `protobuf:"bytes,3,opt,name=note,proto3" json:"note,omitempty"` // diagnostic for first rejection cause (optional)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishAck) Reset() {
+	*x = PublishAck{}
+	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishAck) ProtoMessage() {}
+
+func (x *PublishAck) ProtoReflect() protoreflect.Message {
+	mi := &file_indexfeed_v1_indexfeed_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishAck.ProtoReflect.Descriptor instead.
+func (*PublishAck) Descriptor() ([]byte, []int) {
+	return file_indexfeed_v1_indexfeed_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *PublishAck) GetAccepted() uint32 {
+	if x != nil {
+		return x.Accepted
+	}
+	return 0
+}
+
+func (x *PublishAck) GetRejected() uint32 {
+	if x != nil {
+		return x.Rejected
+	}
+	return 0
+}
+
+func (x *PublishAck) GetNote() string {
+	if x != nil {
+		return x.Note
 	}
 	return ""
 }
@@ -271,31 +491,58 @@ var File_indexfeed_v1_indexfeed_proto protoreflect.FileDescriptor
 
 const file_indexfeed_v1_indexfeed_proto_rawDesc = "" +
 	"\n" +
-	"\x1cindexfeed/v1/indexfeed.proto\x12\findexfeed.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16common/v1/common.proto\"\xb6\x01\n" +
-	"\rTemplateStats\x121\n" +
-	"\awindows\x18\x01 \x01(\v2\x17.common.v1.WindowCountsR\awindows\x129\n" +
-	"\n" +
-	"first_seen\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tfirstSeen\x127\n" +
-	"\tlast_seen\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\"\x8a\x01\n" +
-	"\aAnomaly\x12\x16\n" +
-	"\x06window\x18\x01 \x01(\tR\x06window\x12!\n" +
-	"\fbaseline_p95\x18\x02 \x01(\x01R\vbaselineP95\x12!\n" +
-	"\fcurrent_rate\x18\x03 \x01(\x01R\vcurrentRate\x12!\n" +
-	"\fspike_factor\x18\x04 \x01(\x01R\vspikeFactor\"\xc0\x03\n" +
-	"\rTemplateEvent\x120\n" +
-	"\x04type\x18\x01 \x01(\x0e2\x1c.common.v1.TemplateEventTypeR\x04type\x12\x1f\n" +
+	"\x1cindexfeed/v1/indexfeed.proto\x12\x11indexcandidate.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x98\x01\n" +
+	"\bExemplar\x12\x18\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\x12*\n" +
+	"\x02ts\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02ts\x12\x1c\n" +
+	"\tnamespace\x18\x03 \x01(\tR\tnamespace\x12\x10\n" +
+	"\x03pod\x18\x04 \x01(\tR\x03pod\x12\x16\n" +
+	"\x06stream\x18\x05 \x01(\tR\x06stream\"c\n" +
+	"\fRollingStats\x12\x1b\n" +
+	"\tcount_10m\x18\x01 \x01(\x04R\bcount10m\x12\x19\n" +
+	"\bcount_1h\x18\x02 \x01(\x04R\acount1h\x12\x1b\n" +
+	"\tcount_24h\x18\x03 \x01(\x04R\bcount24h\"\x8d\x06\n" +
+	"\x11TemplateCandidate\x12\x16\n" +
+	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1f\n" +
 	"\vtemplate_id\x18\x02 \x01(\tR\n" +
-	"templateId\x12\x1a\n" +
-	"\btemplate\x18\x03 \x01(\tR\btemplate\x12\x14\n" +
-	"\x05regex\x18\x04 \x01(\tR\x05regex\x12?\n" +
-	"\x06labels\x18\x05 \x03(\v2'.indexfeed.v1.TemplateEvent.LabelsEntryR\x06labels\x121\n" +
-	"\x05stats\x18\x06 \x01(\v2\x1b.indexfeed.v1.TemplateStatsR\x05stats\x12/\n" +
-	"\bexamples\x18\a \x03(\v2\x13.common.v1.ExemplarR\bexamples\x12/\n" +
-	"\aanomaly\x18\b \x01(\v2\x15.indexfeed.v1.AnomalyR\aanomaly\x12\x19\n" +
-	"\bevent_id\x18\t \x01(\tR\aeventId\x1a9\n" +
+	"templateId\x12#\n" +
+	"\rtemplate_text\x18\x03 \x01(\tR\ftemplateText\x12\x14\n" +
+	"\x05regex\x18\x04 \x01(\tR\x05regex\x12H\n" +
+	"\x06labels\x18\x05 \x03(\v20.indexcandidate.v1.TemplateCandidate.LabelsEntryR\x06labels\x125\n" +
+	"\x05stats\x18\x06 \x01(\v2\x1f.indexcandidate.v1.RollingStatsR\x05stats\x129\n" +
+	"\n" +
+	"first_seen\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tfirstSeen\x127\n" +
+	"\tlast_seen\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\blastSeen\x12=\n" +
+	"\n" +
+	"provenance\x18\t \x01(\x0e2\x1d.indexcandidate.v1.ProvenanceR\n" +
+	"provenance\x12)\n" +
+	"\x10template_version\x18\n" +
+	" \x01(\tR\x0ftemplateVersion\x129\n" +
+	"\texemplars\x18\v \x03(\v2\x1b.indexcandidate.v1.ExemplarR\texemplars\x12;\n" +
+	"\voccurred_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\x12%\n" +
+	"\x0esource_service\x18\r \x01(\tR\rsourceService\x12+\n" +
+	"\x11producer_instance\x18\x0e \x01(\tR\x10producerInstance\x12\x1e\n" +
+	"\vseq_no_hint\x18\x0f \x01(\x04R\tseqNoHint\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01BHZFgithub.com/kumarabd/ingestion-plane/contracts/indexfeed/v1;indexfeedv1b\x06proto3"
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"T\n" +
+	"\x16TemplateCandidateBatch\x12:\n" +
+	"\x05items\x18\x01 \x03(\v2$.indexcandidate.v1.TemplateCandidateR\x05items\"X\n" +
+	"\n" +
+	"PublishAck\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\rR\baccepted\x12\x1a\n" +
+	"\brejected\x18\x02 \x01(\rR\brejected\x12\x12\n" +
+	"\x04note\x18\x03 \x01(\tR\x04note*\x8a\x01\n" +
+	"\n" +
+	"Provenance\x12\x1a\n" +
+	"\x16PROVENANCE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10PROVENANCE_CACHE\x10\x01\x12\x18\n" +
+	"\x14PROVENANCE_HEURISTIC\x10\x02\x12\x17\n" +
+	"\x13PROVENANCE_LIBRELOG\x10\x03\x12\x17\n" +
+	"\x13PROVENANCE_FALLBACK\x10\x042f\n" +
+	"\x0fCandidateIngest\x12S\n" +
+	"\aPublish\x12).indexcandidate.v1.TemplateCandidateBatch\x1a\x1d.indexcandidate.v1.PublishAckBRZPgithub.com/kumarabd/ingestion-plane/contracts/indexcandidate/v1;indexcandidatev1b\x06proto3"
 
 var (
 	file_indexfeed_v1_indexfeed_proto_rawDescOnce sync.Once
@@ -309,31 +556,35 @@ func file_indexfeed_v1_indexfeed_proto_rawDescGZIP() []byte {
 	return file_indexfeed_v1_indexfeed_proto_rawDescData
 }
 
-var file_indexfeed_v1_indexfeed_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_indexfeed_v1_indexfeed_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_indexfeed_v1_indexfeed_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_indexfeed_v1_indexfeed_proto_goTypes = []any{
-	(*TemplateStats)(nil),         // 0: indexfeed.v1.TemplateStats
-	(*Anomaly)(nil),               // 1: indexfeed.v1.Anomaly
-	(*TemplateEvent)(nil),         // 2: indexfeed.v1.TemplateEvent
-	nil,                           // 3: indexfeed.v1.TemplateEvent.LabelsEntry
-	(*v1.WindowCounts)(nil),       // 4: common.v1.WindowCounts
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
-	(v1.TemplateEventType)(0),     // 6: common.v1.TemplateEventType
-	(*v1.Exemplar)(nil),           // 7: common.v1.Exemplar
+	(Provenance)(0),                // 0: indexcandidate.v1.Provenance
+	(*Exemplar)(nil),               // 1: indexcandidate.v1.Exemplar
+	(*RollingStats)(nil),           // 2: indexcandidate.v1.RollingStats
+	(*TemplateCandidate)(nil),      // 3: indexcandidate.v1.TemplateCandidate
+	(*TemplateCandidateBatch)(nil), // 4: indexcandidate.v1.TemplateCandidateBatch
+	(*PublishAck)(nil),             // 5: indexcandidate.v1.PublishAck
+	nil,                            // 6: indexcandidate.v1.TemplateCandidate.LabelsEntry
+	(*timestamppb.Timestamp)(nil),  // 7: google.protobuf.Timestamp
 }
 var file_indexfeed_v1_indexfeed_proto_depIdxs = []int32{
-	4, // 0: indexfeed.v1.TemplateStats.windows:type_name -> common.v1.WindowCounts
-	5, // 1: indexfeed.v1.TemplateStats.first_seen:type_name -> google.protobuf.Timestamp
-	5, // 2: indexfeed.v1.TemplateStats.last_seen:type_name -> google.protobuf.Timestamp
-	6, // 3: indexfeed.v1.TemplateEvent.type:type_name -> common.v1.TemplateEventType
-	3, // 4: indexfeed.v1.TemplateEvent.labels:type_name -> indexfeed.v1.TemplateEvent.LabelsEntry
-	0, // 5: indexfeed.v1.TemplateEvent.stats:type_name -> indexfeed.v1.TemplateStats
-	7, // 6: indexfeed.v1.TemplateEvent.examples:type_name -> common.v1.Exemplar
-	1, // 7: indexfeed.v1.TemplateEvent.anomaly:type_name -> indexfeed.v1.Anomaly
-	8, // [8:8] is the sub-list for method output_type
-	8, // [8:8] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	7,  // 0: indexcandidate.v1.Exemplar.ts:type_name -> google.protobuf.Timestamp
+	6,  // 1: indexcandidate.v1.TemplateCandidate.labels:type_name -> indexcandidate.v1.TemplateCandidate.LabelsEntry
+	2,  // 2: indexcandidate.v1.TemplateCandidate.stats:type_name -> indexcandidate.v1.RollingStats
+	7,  // 3: indexcandidate.v1.TemplateCandidate.first_seen:type_name -> google.protobuf.Timestamp
+	7,  // 4: indexcandidate.v1.TemplateCandidate.last_seen:type_name -> google.protobuf.Timestamp
+	0,  // 5: indexcandidate.v1.TemplateCandidate.provenance:type_name -> indexcandidate.v1.Provenance
+	1,  // 6: indexcandidate.v1.TemplateCandidate.exemplars:type_name -> indexcandidate.v1.Exemplar
+	7,  // 7: indexcandidate.v1.TemplateCandidate.occurred_at:type_name -> google.protobuf.Timestamp
+	3,  // 8: indexcandidate.v1.TemplateCandidateBatch.items:type_name -> indexcandidate.v1.TemplateCandidate
+	4,  // 9: indexcandidate.v1.CandidateIngest.Publish:input_type -> indexcandidate.v1.TemplateCandidateBatch
+	5,  // 10: indexcandidate.v1.CandidateIngest.Publish:output_type -> indexcandidate.v1.PublishAck
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_indexfeed_v1_indexfeed_proto_init() }
@@ -346,13 +597,14 @@ func file_indexfeed_v1_indexfeed_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_indexfeed_v1_indexfeed_proto_rawDesc), len(file_indexfeed_v1_indexfeed_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   4,
+			NumEnums:      1,
+			NumMessages:   6,
 			NumExtensions: 0,
-			NumServices:   0,
+			NumServices:   1,
 		},
 		GoTypes:           file_indexfeed_v1_indexfeed_proto_goTypes,
 		DependencyIndexes: file_indexfeed_v1_indexfeed_proto_depIdxs,
+		EnumInfos:         file_indexfeed_v1_indexfeed_proto_enumTypes,
 		MessageInfos:      file_indexfeed_v1_indexfeed_proto_msgTypes,
 	}.Build()
 	File_indexfeed_v1_indexfeed_proto = out.File
