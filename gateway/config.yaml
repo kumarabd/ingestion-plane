@@ -25,6 +25,7 @@ server:
 
 otlp:
   max_log_size: 1048576      # 1MB
+  max_message_bytes: 1048576 # 1MB max message size
   max_batch_size: 1000       # 1000 logs per batch
   max_labels: 100            # 100 labels per log
   max_fields: 200            # 200 fields per log
@@ -36,6 +37,29 @@ emitter:
   output_type: "stdout"      # stdout, kafka, grpc
   batch_size: 100            # Batch size for output
   flush_interval: 5          # Flush interval in seconds
+
+miner:
+  addr: "dns:///miner:9000"    # Miner gRPC endpoint
+  timeout: "200ms"             # Request timeout
+  max_batch: 500               # Max batch size
+  max_batch_wait: "25ms"       # Max batch wait time
+  max_retries: 2               # Retry attempts
+  retry_base_delay: "20ms"     # Base delay between retries
+  shadow_only: true            # Shadow mode - don't drop logs yet
+
+sampler:
+  addr: "dns:///sampler:9000"  # Sampler gRPC endpoint
+  timeout: "100ms"             # Request timeout
+  max_batch: 1000              # Max batch size
+  max_batch_wait: "25ms"       # Max batch wait time
+
+enforcement:
+  debug: true                  # Enforce debug logs
+  info: false                  # Enforce info logs
+  warn: false                  # Enforce warn logs
+  error: false                 # Enforce error logs
+  by_namespace:                # Per-namespace overrides
+    staging: true
 
 # Loki sink configuration
 loki:

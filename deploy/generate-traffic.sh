@@ -12,7 +12,7 @@ for i in {1..10}; do
     # Normal requests
     if ! curl -H "Content-Type: application/json" \
   -s -X POST "http://localhost:8001/loki/api/v1/push" \
-  --data-raw '{"streams": [{ "labels": "{foo=\"bar2\"}", "entries": [{ "ts": "2019-10-12T07:20:50.52Z", "line": "fizzbuzz" }] }]}' 2>&1; then
+  --data-raw "{\"streams\": [{ \"labels\": \"{foo=\\\"bar2\\\"}\", \"entries\": [{ \"ts\": \"2019-10-12T07:20:50.52Z\", \"line\": \"This is a log message with $i characters\" }] }]}" 2>&1; then
         echo "Error: curl command failed for request $i"
     fi
     sleep 1

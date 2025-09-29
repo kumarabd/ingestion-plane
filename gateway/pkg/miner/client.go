@@ -57,7 +57,9 @@ func (m *grpcClient) AnalyzeBatch(ctx context.Context, recs []logtypes.Normalize
 	areq := &minerv1.AnalyzeRequest{Records: make([]*ingestv1.NormalizedLog, 0, len(recs))}
 	for i := range recs {
 		nl := recs[i]
-		areq.Records = append(areq.Records, toProtoNormalized(nl))
+		protoRec := toProtoNormalized(nl)
+		areq.Records = append(areq.Records, protoRec)
+
 	}
 
 	var lastErr error

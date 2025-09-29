@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "ingestion-plane"
+version = "0.1.0"
+description = "Log ingestion pipeline with protobuf contracts"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [
+    {include = "contracts"},
+    {include = "miner"},
+    {include = "LibreLog"},
+]
+package-mode = true
+
+[tool.poetry.dependencies]
+python = "^3.9"
+grpcio = "^1.75.1"
+grpcio-tools = "^1.75.1"
+protobuf = "^6.32.1"
+redis = "^5.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+black = "^23.0.0"
+flake8 = "^6.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

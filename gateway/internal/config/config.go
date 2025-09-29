@@ -48,13 +48,14 @@ func New() (*Config, error) {
 			},
 		},
 		OTLP: &ingest.Config{
-			MaxLogSize:     1048576, // 1MB
-			MaxBatchSize:   1000,    // 1000 logs per batch
-			MaxLabels:      100,     // 100 labels per log
-			MaxFields:      200,     // 200 fields per log
-			RequestTimeout: 30,      // 30s timeout
-			ValidateUTF8:   true,    // Validate UTF-8
-			AllowedSchemas: []string{"JSON", "LOGFMT", "TEXT"},
+			MaxLogSize:      1048576, // 1MB
+			MaxMessageBytes: 1048576, // 1MB max message size
+			MaxBatchSize:    1000,    // 1000 logs per batch
+			MaxLabels:       100,     // 100 labels per log
+			MaxFields:       200,     // 200 fields per log
+			RequestTimeout:  30,      // 30s timeout
+			ValidateUTF8:    true,    // Validate UTF-8
+			AllowedSchemas:  []string{"JSON", "LOGFMT", "TEXT"},
 		},
 		Emitter: &ingest.EmitterConfig{
 			OutputType:    "stdout", // stdout, kafka, grpc
@@ -71,7 +72,7 @@ func New() (*Config, error) {
 			ShadowOnly:     true, // Shadow mode - don't drop logs yet
 		},
 		Sampler: &sampler.SamplerConfig{
-			Addr:         "sampler:9000", // Sampler gRPC endpoint
+			Addr:         "dns:///sampler:9000", // Sampler gRPC endpoint
 			Timeout:      100 * time.Millisecond,
 			MaxBatch:     1000,
 			MaxBatchWait: 25 * time.Millisecond,

@@ -111,7 +111,9 @@ func (s *HTTP) convertLokiToRawLogBatch(lokiReq *logproto.PushRequest) ingest.Ra
 	var records []ingest.RawLog
 
 	for _, stream := range lokiReq.Streams {
+
 		for _, entry := range stream.Entries {
+
 			// Parse Loki labels string format: "{key1=\"value1\",key2=\"value2\"}"
 			labels := parseLokiLabels(stream.Labels)
 

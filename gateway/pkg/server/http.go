@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kumarabd/gokit/logger"
+	samplerv1 "github.com/kumarabd/ingestion-plane/contracts/sampler/v1"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
 	"github.com/kumarabd/ingestion-plane/gateway/pkg/indexfeed"
 	"github.com/kumarabd/ingestion-plane/gateway/pkg/ingest"
@@ -569,7 +571,7 @@ func (s *HTTP) runMinerToSamplerBridge() {
 func (s *HTTP) runSamplerToLokiBridge() {
 	defer s.workerWg.Done()
 
-	s.log.Info().Msg("Sampler to Loki bridge started")
+	s.log.Info().Msg("Sampler to stdout bridge started")
 
 	for {
 		select {
@@ -578,9 +580,7 @@ func (s *HTTP) runSamplerToLokiBridge() {
 			lokiEntry := s.convertToLokiEntry(keptRecord)
 
 			// Send to Loki sink
-			if s.lokiSink != nil {
-				s.lokiSink.Enqueue(context.Background(), []loki.LokiEntry{lokiEntry})
-			}
+			s.lokiSink.Enqueue(context.Background(), []loki.LokiEntry{lokiEntry})
 
 		case <-s.workerCtx.Done():
 			s.log.Info().Msg("Sampler to Loki bridge shutting down")
@@ -624,38 +624,106 @@ func (s *HTTP) convertToLokiEntry(record *sampler.PipelineRecord) loki.LokiEntry
 	}
 }
 
-// buildLogLine builds the final log line with annotations
+// buildLogLine builds the final log line as JSON with all useful fields
 func (s *HTTP) buildLogLine(record *sampler.PipelineRecord) string {
-	baseLine := record.Normalized.Message
-
-	// Add annotations as fields (not as high-cardinality labels)
-	annotations := []string{}
-
-	if record.TemplateID != "" {
-		annotations = append(annotations, fmt.Sprintf("template_id=%s", record.TemplateID))
+	// Create a structured log entry
+	logEntry := map[string]interface{}{
+		"message": record.Normalized.Message,
+		"ts":      record.Normalized.Timestamp.Format(time.RFC3339Nano),
+		"labels":  record.Normalized.Labels,
 	}
 
-	if record.Decision.KeepReason.String() != "" {
-		annotations = append(annotations, fmt.Sprintf("keep_reason=%s", record.Decision.KeepReason.String()))
+	// Add template information
+	if record.TemplateID != "" {
+		logEntry["template_id"] = record.TemplateID
+	}
+
+	// Add decision information with normalized reason strings
+	if record.Decision.Action.String() != "" {
+		logEntry["action"] = strings.ToLower(strings.TrimPrefix(record.Decision.Action.String(), "ACTION_"))
+	}
+
+	// Normalize reason strings to human-readable format
+	reasonStr := s.normalizeKeepReason(record.Decision.KeepReason)
+	if reasonStr != "" {
+		if record.Shadow {
+			logEntry["keep_reason_shadow"] = reasonStr
+			logEntry["enforced"] = false
+		} else {
+			logEntry["keep_reason"] = reasonStr
+			logEntry["enforced"] = true
+		}
+	}
+
+	// Add useful fields
+	if record.Normalized.Truncated {
+		logEntry["truncated"] = true
 	}
 
 	if record.Normalized.Sanitized {
-		annotations = append(annotations, "sanitized=true")
+		logEntry["sanitized"] = true
 	}
 
-	if record.Normalized.Truncated {
-		annotations = append(annotations, "truncated=true")
+	// Add provenance information if available
+	if record.Normalized.Redaction.Applied {
+		logEntry["redaction_applied"] = true
+		logEntry["redaction_rules"] = record.Normalized.Redaction.Rules
+		logEntry["redaction_count"] = record.Normalized.Redaction.Count
 	}
 
+	// Add sampling information
+	if record.Decision.SampleRate > 0 {
+		logEntry["sample_rate"] = record.Decision.SampleRate
+	}
+
+	// Add policy version
+	if record.Decision.PolicyVersion != "" {
+		logEntry["policy_version"] = record.Decision.PolicyVersion
+	}
+
+	// Add shadow mode indicator
 	if record.Shadow {
-		annotations = append(annotations, "shadow=true")
+		logEntry["shadow"] = true
 	}
 
-	if len(annotations) > 0 {
-		return fmt.Sprintf("%s | %s", baseLine, strings.Join(annotations, " "))
+	// Add schema information
+	if record.Normalized.Schema != "" {
+		logEntry["schema"] = record.Normalized.Schema
 	}
 
-	return baseLine
+	// Convert to JSON
+	jsonBytes, err := json.Marshal(logEntry)
+	if err != nil {
+		// Fallback to simple format if JSON marshaling fails
+		return fmt.Sprintf("%s | template_id=%s action=%s",
+			record.Normalized.Message,
+			record.TemplateID,
+			strings.ToLower(strings.TrimPrefix(record.Decision.Action.String(), "ACTION_")))
+	}
+
+	return string(jsonBytes)
+}
+
+// normalizeKeepReason converts enum values to human-readable strings
+func (s *HTTP) normalizeKeepReason(reason samplerv1.KeepReason) string {
+	switch reason {
+	case samplerv1.KeepReason_KEEP_REASON_SEVERITY:
+		return "SEVERITY"
+	case samplerv1.KeepReason_KEEP_REASON_NOVEL:
+		return "NOVEL"
+	case samplerv1.KeepReason_KEEP_REASON_SPIKE:
+		return "SPIKE"
+	case samplerv1.KeepReason_KEEP_REASON_WARMUP:
+		return "WARMUP"
+	case samplerv1.KeepReason_KEEP_REASON_LOG2:
+		return "LOG2"
+	case samplerv1.KeepReason_KEEP_REASON_STEADYK:
+		return "STEADYK"
+	case samplerv1.KeepReason_KEEP_REASON_BUDGET:
+		return "BUDGET"
+	default:
+		return ""
+	}
 }
 
 // enqueueRawBatch enqueues a raw batch for background processing with timeout handling

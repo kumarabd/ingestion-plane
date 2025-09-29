@@ -174,6 +174,7 @@ func containsLogfmtPairs(message string) bool {
 
 // NormalizeMessage normalizes a message by enforcing size cap, canonicalizing whitespace, and normalizing UTF-8
 func NormalizeMessage(message string, maxBytes int) (string, bool) {
+
 	// Enforce size cap
 	truncated := false
 	if len(message) > maxBytes {
@@ -198,6 +199,7 @@ func canonicalizeWhitespace(s string) string {
 
 // NormalizeRawLog normalizes a single RawLog into a NormalizedLog
 func NormalizeRawLog(rawLog RawLog, maxMessageBytes int) logtypes.NormalizedLog {
+
 	// Detect schema
 	schema := DetermineSchema(rawLog.Payload, nil)
 

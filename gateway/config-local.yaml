@@ -14,6 +14,7 @@ server:
 
 otlp:
   max_log_size: 1048576      # 1MB
+  max_message_bytes: 1048576 # 1MB max message size
   max_batch_size: 1000       # 1000 logs per batch
   max_labels: 100            # 100 labels per log
   max_fields: 200            # 200 fields per log
@@ -34,6 +35,20 @@ miner:
   max_retries: 3                # Override retry count
   retry_base_delay: "50ms"      # Override retry delay
   shadow_only: false            # Enable actual log dropping
+
+sampler:
+  addr: "localhost:50060"       # Local gRPC endpoint (different port from miner/indexfeed)
+  timeout: "500ms"              # Longer timeout for local development
+  max_batch: 1000               # Max batch size
+  max_batch_wait: "50ms"        # Longer wait time for local development
+
+enforcement:
+  debug: true                   # Enforce debug logs
+  info: false                   # Enforce info logs
+  warn: false                   # Enforce warn logs
+  error: false                  # Enforce error logs
+  by_namespace:                 # Per-namespace overrides
+    staging: true
 
 # Loki sink configuration - MOCK MODE for local development
 loki:
@@ -58,7 +73,7 @@ loki:
 
 # IndexFeed service configuration - LOCAL DEVELOPMENT
 indexfeed:
-  addr: "localhost:50052"        # Local gRPC endpoint (different port from miner)
+  addr: "localhost:50070"        # Local gRPC endpoint (different port from miner)
   timeout: "500ms"               # Longer timeout for local development
   max_retries: 3                 # More retries for local development
   retry_base_delay: "50ms"       # Longer delay for local development

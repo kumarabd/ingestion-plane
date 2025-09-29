@@ -9,13 +9,6 @@ docs/vendor/
 docs/.bundle/
 docs/Gemfile.lock
 
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -54,3 +47,90 @@ pids/
 config/secrets.yml
 config/database.yml
 config/application.yml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Poetry
+poetry.lock
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Virtual environments
+miner/bin/
+miner/include/
+miner/lib/
+miner/pyvenv.cfg
+miner/.venv/
+miner/venv/
+miner/env/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vimrc
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Protobuf generated files (optional - uncomment if you want to ignore them)
+# contracts/*/v1/*_pb2.py
+# contracts/*/v1/*_pb2_grpc.py
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Redis
+dump.rdb
+
+# LibreLog specific
+LibreLog/results/
+LibreLog/models/
+LibreLog/full_dataset/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
