@@ -10,10 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	indexfeedv1 "github.com/kumarabd/ingestion-plane/contracts/indexfeed/v1"
 	_ "github.com/lib/pq"
@@ -126,9 +129,10 @@ ON CONFLICT (tenant, template_id, "window") DO UPDATE SET
 // ----------- Qdrant helpers -----------
 
 type VecUpserter struct {
-	cli        qdrant.QdrantClient
-	collection string
-	dim        int
+	collectionsClient qdrant.CollectionsClient
+	pointsClient      qdrant.PointsClient
+	collection        string
+	dim               int
 }
 
 func newVecUpserter(ctx context.Context, host string, port int, collection string, dim int) (*VecUpserter, error) {
@@ -136,8 +140,14 @@ func newVecUpserter(ctx context.Context, host string, port int, collection strin
 	if err != nil {
 		return nil, fmt.Errorf("qdrant connect: %w", err)
 	}
-	client := qdrant.NewQdrantClient(conn)
-	v := &VecUpserter{cli: client, collection: collection, dim: dim}
+	collectionsClient := qdrant.NewCollectionsClient(conn)
+	pointsClient := qdrant.NewPointsClient(conn)
+	v := &VecUpserter{
+		collectionsClient: collectionsClient,
+		pointsClient:      pointsClient,
+		collection:        collection,
+		dim:               dim,
+	}
 	if err := v.ensureCollection(ctx); err != nil {
 		return nil, err
 	}
@@ -145,21 +155,108 @@ func newVecUpserter(ctx context.Context, host string, port int, collection strin
 }
 
 func (v *VecUpserter) ensureCollection(ctx context.Context) error {
-	// For now, we'll assume the collection exists or will be created by the Qdrant server
-	// In a real implementation, you would check if the collection exists and create it if needed
+	// Check if collection exists
+	collections, err := v.collectionsClient.List(ctx, &qdrant.ListCollectionsRequest{})
+	if err != nil {
+		return fmt.Errorf("failed to list collections: %w", err)
+	}
+
+	// Check if our collection exists
+	for _, col := range collections.GetCollections() {
+		if col.GetName() == v.collection {
+			log.Printf("INFO: Collection %s already exists", v.collection)
+			return nil
+		}
+	}
+
+	// Create collection if it doesn't exist
+	log.Printf("INFO: Creating collection %s with vector dimension %d", v.collection, v.dim)
+
+	// Create collection configuration
+	config := &qdrant.CreateCollection{
+		CollectionName: v.collection,
+		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+			Size:     uint64(v.dim),
+			Distance: qdrant.Distance_Cosine,
+		}),
+	}
+
+	_, err = v.collectionsClient.Create(ctx, config)
+	if err != nil {
+		return fmt.Errorf("failed to create collection %s: %w", v.collection, err)
+	}
+
+	log.Printf("INFO: Successfully created collection %s", v.collection)
 	return nil
 }
 
 func (v *VecUpserter) UpsertTemplate(ctx context.Context, id string, vec []float32, payload map[string]interface{}) error {
-	// For now, we'll just log the operation since the Qdrant client API is limited
-	// In a real implementation, you would use the correct Qdrant client methods
 	log.Printf("DEBUG: VecUpserter.UpsertTemplate called - id=%s, vector_len=%d, collection=%s", id, len(vec), v.collection)
 
-	// Log payload details for debugging
-	payloadJSON, _ := json.Marshal(payload)
-	log.Printf("DEBUG: Qdrant payload: %s", string(payloadJSON))
+	// Convert payload to Qdrant format, handling problematic types manually
+	qdrantPayload := make(map[string]*qdrant.Value)
+	for k, v := range payload {
+		switch val := v.(type) {
+		case string:
+			qdrantPayload[k] = qdrant.NewValueString(val)
+		case int:
+			qdrantPayload[k] = qdrant.NewValueInt(int64(val))
+		case int64:
+			qdrantPayload[k] = qdrant.NewValueInt(val)
+		case float64:
+			qdrantPayload[k] = qdrant.NewValueDouble(val)
+		case bool:
+			qdrantPayload[k] = qdrant.NewValueBool(val)
+		case map[string]string:
+			// Handle map[string]string (like labels) by converting to map[string]interface{}
+			converted := make(map[string]interface{})
+			for mk, mv := range val {
+				converted[mk] = mv
+			}
+			if structVal, err := qdrant.NewStruct(converted); err == nil {
+				qdrantPayload[k] = qdrant.NewValueStruct(structVal)
+			} else {
+				// Fallback to string representation
+				qdrantPayload[k] = qdrant.NewValueString(fmt.Sprintf("%v", val))
+			}
+		case map[string]interface{}:
+			// Handle nested objects
+			if structVal, err := qdrant.NewStruct(val); err == nil {
+				qdrantPayload[k] = qdrant.NewValueStruct(structVal)
+			} else {
+				qdrantPayload[k] = qdrant.NewValueString(fmt.Sprintf("%v", val))
+			}
+		default:
+			// Convert to string as fallback
+			qdrantPayload[k] = qdrant.NewValueString(fmt.Sprintf("%v", val))
+		}
+	}
 
-	log.Printf("INFO: Would upsert template %s with vector of length %d to collection %s", id, len(vec), v.collection)
+	// Create the point - use numeric ID to avoid UUID format issues
+	// Generate a numeric ID from the string by hashing it
+	hash := uint64(0)
+	for _, b := range []byte(id) {
+		hash = hash*31 + uint64(b)
+	}
+
+	point := &qdrant.PointStruct{
+		Id:      qdrant.NewIDNum(hash),
+		Vectors: qdrant.NewVectors(vec...),
+		Payload: qdrantPayload,
+	}
+
+	// Upsert the point
+	upsertReq := &qdrant.UpsertPoints{
+		CollectionName: v.collection,
+		Points:         []*qdrant.PointStruct{point},
+	}
+
+	_, err := v.pointsClient.Upsert(ctx, upsertReq)
+	if err != nil {
+		return fmt.Errorf("failed to upsert point %s: %w", id, err)
+	}
+
+	log.Printf("INFO: Successfully upserted template %s with vector of length %d to collection %s", id, len(vec), v.collection)
 	return nil
 }
 
@@ -169,36 +266,180 @@ func (v *VecUpserter) UpsertTemplate(ctx context.Context, id string, vec []float
 func embedTemplate(text string, dim int) []float32 {
 	log.Printf("DEBUG: embedTemplate called - text_len=%d, dim=%d", len(text), dim)
 
-	h := sha256.Sum256([]byte(strings.ToLower(text)))
-	// Expand the 32 bytes into dim floats deterministically.
-	out := make([]float32, dim)
-	var seed uint64
-	seed = binary.LittleEndian.Uint64(h[0:8]) ^ binary.LittleEndian.Uint64(h[8:16]) ^
-		binary.LittleEndian.Uint64(h[16:24]) ^ binary.LittleEndian.Uint64(h[24:32])
+	// Use the same real embedding implementation as planner
+	vec := embedText(text, dim)
 
-	log.Printf("DEBUG: Generated seed from hash: %d", seed)
+	log.Printf("DEBUG: Embedding generated with real implementation")
+	return vec
+}
 
-	// Xorshift-ish PRNG to fill
-	var x = seed
-	for i := 0; i < dim; i++ {
-		x ^= x << 13
-		x ^= x >> 7
-		x ^= x << 17
-		out[i] = float32((x % 10000)) / 10000.0 // [0,1)
+// Real embedding implementation using word-level features and semantic hashing
+func embedText(text string, dim int) []float32 {
+	// Normalize text
+	text = strings.ToLower(strings.TrimSpace(text))
+
+	// Tokenize into words
+	words := tokenize(text)
+
+	// Create word embeddings using multiple approaches
+	vec := make([]float32, dim)
+
+	// 1. Character n-gram features (captures morphology)
+	charNgrams := extractCharNgrams(text, 2, 4) // 2-4 character n-grams
+	for i, ngram := range charNgrams {
+		if i >= dim/4 {
+			break
+		}
+		vec[i] = float32(hashToFloat(ngram))
 	}
 
-	// L2-normalize for cosine fairness
+	// 2. Word-level features (captures semantics)
+	wordFeatures := extractWordFeatures(words)
+	for i, feature := range wordFeatures {
+		if i >= dim/4 {
+			break
+		}
+		vec[dim/4+i] = float32(feature)
+	}
+
+	// 3. TF-IDF like features (captures importance)
+	tfidfFeatures := extractTfIdfFeatures(words)
+	for i, feature := range tfidfFeatures {
+		if i >= dim/4 {
+			break
+		}
+		vec[dim/2+i] = float32(feature)
+	}
+
+	// 4. Semantic hash features (captures overall meaning)
+	semanticHash := hashToFloat(text)
+	for i := 0; i < dim/4; i++ {
+		vec[3*dim/4+i] = float32(semanticHash * float64(i+1) / float64(dim/4))
+	}
+
+	// Normalize the vector
+	normalizeVector(vec)
+
+	return vec
+}
+
+// Tokenize text into words, handling common log patterns
+func tokenize(text string) []string {
+	// Split on whitespace and punctuation, but preserve some patterns
+	words := []string{}
+	current := ""
+
+	for _, r := range text {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' {
+			current += string(r)
+		} else {
+			if current != "" {
+				words = append(words, current)
+				current = ""
+			}
+		}
+	}
+	if current != "" {
+		words = append(words, current)
+	}
+
+	return words
+}
+
+// Extract character n-grams
+func extractCharNgrams(text string, minN, maxN int) []string {
+	ngrams := []string{}
+	for n := minN; n <= maxN; n++ {
+		for i := 0; i <= len(text)-n; i++ {
+			ngram := text[i : i+n]
+			ngrams = append(ngrams, ngram)
+		}
+	}
+	return ngrams
+}
+
+// Extract word-level features
+func extractWordFeatures(words []string) []float64 {
+	features := []float64{}
+
+	// Word length statistics
+	if len(words) > 0 {
+		avgLength := 0.0
+		for _, word := range words {
+			avgLength += float64(len(word))
+		}
+		avgLength /= float64(len(words))
+		features = append(features, avgLength/20.0) // normalize
+	}
+
+	// Word frequency features
+	wordFreq := make(map[string]int)
+	for _, word := range words {
+		wordFreq[word]++
+	}
+
+	// Most common word features
+	sortedWords := make([]string, 0, len(wordFreq))
+	for word := range wordFreq {
+		sortedWords = append(sortedWords, word)
+	}
+	sort.Slice(sortedWords, func(i, j int) bool {
+		return wordFreq[sortedWords[i]] > wordFreq[sortedWords[j]]
+	})
+
+	for i := range sortedWords {
+		if i >= 10 { // limit to top 10 words
+			break
+		}
+		word := sortedWords[i]
+		features = append(features, float64(wordFreq[word])/float64(len(words)))
+	}
+
+	return features
+}
+
+// Extract TF-IDF like features
+func extractTfIdfFeatures(words []string) []float64 {
+	features := []float64{}
+
+	// Term frequency features
+	termFreq := make(map[string]int)
+	for _, word := range words {
+		termFreq[word]++
+	}
+
+	// Calculate TF scores
+	for _, freq := range termFreq {
+		tf := float64(freq) / float64(len(words))
+		features = append(features, tf)
+	}
+
+	// Add document length feature
+	features = append(features, math.Log(float64(len(words))+1)/10.0)
+
+	return features
+}
+
+// Hash string to float in range [0, 1]
+func hashToFloat(s string) float64 {
+	hash := sha256.Sum256([]byte(s))
+	// Take first 8 bytes and convert to float
+	bits := binary.BigEndian.Uint64(hash[:8])
+	return float64(bits) / float64(^uint64(0)) // normalize to [0, 1]
+}
+
+// Normalize vector to unit length
+func normalizeVector(vec []float32) {
 	var sum float64
-	for _, v := range out {
+	for _, v := range vec {
 		sum += float64(v * v)
 	}
-	norm := float32(1.0 / (float64ToFloat32SafeSqrt(sum) + 1e-8))
-	for i := range out {
-		out[i] *= norm
+	if sum > 0 {
+		norm := float32(1.0 / math.Sqrt(sum))
+		for i := range vec {
+			vec[i] *= norm
+		}
 	}
-
-	log.Printf("DEBUG: Embedding generated - norm=%.6f, sum_before_norm=%.6f", norm, sum)
-	return out
 }
 
 func float64ToFloat32SafeSqrt(f float64) float32 {
@@ -367,7 +608,7 @@ func (s *server) handleCandidate(ctx context.Context, tx *sql.Tx, c *indexfeedv1
 	// We don't fetch existing version here; rely on db constraint that only updates when version differs.
 	log.Printf("DEBUG: Generating embedding for template text (len=%d)", len(c.TemplateText))
 	vec := embedTemplate(c.TemplateText, s.cfg.VectorDim)
-	pointID := tenant + ":" + c.TemplateId
+	pointID := c.TemplateId // Use template ID directly, store tenant in payload
 	payload := map[string]interface{}{
 		"tenant":           tenant,
 		"template_id":      c.TemplateId,
