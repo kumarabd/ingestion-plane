@@ -13,14 +13,14 @@ RUN apk add --no-cache git make ca-certificates tzdata
 WORKDIR /build
 
 # Copy go mod files
-COPY ../contracts/ contracts/
-COPY go.mod go.sum ./
+COPY contracts/ contracts/
+COPY sampler/go.mod sampler/go.sum ./
 
 # Download dependencies
-RUN go mod download
+RUN cd sampler && go mod download
 
 # Copy source code
-COPY main.go ./
+COPY sampler/main.go ./
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \

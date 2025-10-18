@@ -27,7 +27,7 @@ COPY pyproject.toml poetry.lock ./
 RUN poetry install --no-root --only main
 
 # Copy application code
-COPY main.py __init__.py ./
+COPY miner/main.py miner/__init__.py ./
 COPY drain3.ini ./
 COPY contracts/ contracts/
 
