@@ -89,9 +89,13 @@ type HTTP struct {
 	samplerOutputKeptCh       chan *sampler.PipelineRecord
 	samplerOutputSuppressedCh chan *sampler.PipelineRecord
 
-	// Loki sink components
+	// Loki sink components (for processed logs)
 	lokiConfig *loki.LokiConfig
 	lokiSink   *loki.LokiSink
+
+	// Loki raw sink components (for raw logs)
+	lokiRawConfig *loki.LokiConfig
+	lokiRawSink   *loki.LokiSink
 
 	// Index-Feed producer components
 	indexFeedConfig *indexfeed.Config
@@ -99,7 +103,7 @@ type HTTP struct {
 }
 
 // NewHTTP creates a new HTTP server instance
-func NewHTTP(config *HTTPConfig, minerConfig *miner.Config, samplerConfig *sampler.SamplerConfig, enforcementConfig *sampler.EnforcementConfig, lokiConfig *loki.LokiConfig, indexFeedConfig *indexfeed.Config, in *ingest.Handler, l *logger.Handler, m *metrics.Handler) *HTTP {
+func NewHTTP(config *HTTPConfig, minerConfig *miner.Config, samplerConfig *sampler.SamplerConfig, enforcementConfig *sampler.EnforcementConfig, lokiConfig *loki.LokiConfig, lokiRawConfig *loki.LokiConfig, indexFeedConfig *indexfeed.Config, in *ingest.Handler, l *logger.Handler, m *metrics.Handler) *HTTP {
 	gin.SetMode(gin.ReleaseMode)
 
 	// Set up default configuration if not provided
@@ -128,6 +132,7 @@ func NewHTTP(config *HTTPConfig, minerConfig *miner.Config, samplerConfig *sampl
 		samplerConfig:             samplerConfig,
 		enforcementConfig:         enforcementConfig,
 		lokiConfig:                lokiConfig,
+		lokiRawConfig:             lokiRawConfig,
 		indexFeedConfig:           indexFeedConfig,
 		rawQueue:                  make(chan queuedItem, config.Bounds.MaxBatch*2), // Buffer for 2x max batch size
 		workerCtx:                 workerCtx,
@@ -228,10 +233,14 @@ func (s *HTTP) Stop(ctx context.Context) error {
 		}
 	}
 
-	// Stop the Loki sink
+	// Stop the Loki sinks (processed and raw)
 	if s.lokiSink != nil {
 		s.lokiSink.Stop()
-		s.log.Info().Msg("Loki sink stopped")
+		s.log.Info().Msg("Loki sink (processed) stopped")
+	}
+	if s.lokiRawSink != nil {
+		s.lokiRawSink.Stop()
+		s.log.Info().Msg("Loki sink (raw) stopped")
 	}
 
 	// Stop the sampler batcher
@@ -453,27 +462,40 @@ func (s *HTTP) startSamplerBatcher() {
 	}
 }
 
-// initLoki initializes the Loki sink
+// initLoki initializes the Loki sinks (processed and raw)
 func (s *HTTP) initLoki() error {
 	if s.lokiConfig == nil {
 		return fmt.Errorf("loki config is nil")
 	}
 
-	// Create Loki sink
+	// Create Loki sink for processed logs
 	s.lokiSink = loki.NewLokiSink(
 		s.lokiConfig,
 		loki.NewLokiMetrics(s.metric),
 		s.log,
 	)
 
+	// Create Loki raw sink for raw logs
+	if s.lokiRawConfig != nil {
+		s.lokiRawSink = loki.NewLokiSink(
+			s.lokiRawConfig,
+			loki.NewLokiMetrics(s.metric),
+			s.log,
+		)
+	}
+
 	return nil
 }
 
-// startLokiSink starts the Loki sink
+// startLokiSink starts the Loki sinks (processed and raw)
 func (s *HTTP) startLokiSink() {
 	if s.lokiSink != nil {
 		s.lokiSink.Start()
-		s.log.Info().Msg("Loki sink started")
+		s.log.Info().Msg("Loki sink (processed) started")
+	}
+	if s.lokiRawSink != nil {
+		s.lokiRawSink.Start()
+		s.log.Info().Msg("Loki sink (raw) started")
 	}
 }
 

@@ -1,0 +1,87 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+ingester:
+  chunk_idle_period: 5m
+  chunk_block_size: 262144
+  chunk_target_size: 1572864
+  chunk_retain_period: 30s
+  max_chunk_age: 1h
+  max_transfer_retries: 0
+  wal:
+    enabled: true
+    dir: /loki/wal
+    replay_memory_ceiling: 1GB
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://localhost:9093
+
+# Retention configuration - keep raw logs for 7 days
+limits_config:
+  retention_period: 168h  # 7 days (shorter than processed logs)
+  max_query_length: 169h  # Slightly more than retention for safety
+  
+  # Out-of-order ingestion configuration
+  unordered_writes: true
+  max_chunks_per_query: 2000000
+  max_query_series: 500
+  
+  # Allow out-of-order writes with a very generous time window
+  # Disable rejection of old samples to accept logs with any historical timestamp
+  reject_old_samples: false  # Accept logs regardless of age
+  creation_grace_period: 1h  # Allow logs with timestamps up to 1 hour in the future
+  
+  # Ingestion limits
+  ingestion_rate_mb: 20  # Higher limit for raw logs (20 MB/s per tenant)
+  ingestion_burst_size_mb: 40  # 40 MB burst
+
+# Compactor for retention enforcement
+compactor:
+  working_directory: /loki/compactor
+  shared_store: filesystem
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+
+# Table manager (deprecated but still used with boltdb-shipper)
+table_manager:
+  retention_deletes_enabled: true
+  retention_period: 168h
+
+analytics:
+  reporting_enabled: false
+
+

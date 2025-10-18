@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/kumarabd/gokit/logger"
 	"github.com/kumarabd/ingestion-plane/gateway/internal/metrics"
 )
@@ -174,10 +175,20 @@ func (s *LokiSink) Stop() {
 	s.log.Info().Msg("Loki sink stopped")
 }
 
-// Enqueue adds entries to the Loki sink
+// Enqueue adds entries to the Loki sink (for processed logs)
 func (s *LokiSink) Enqueue(ctx context.Context, entries []LokiEntry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.log.Debug().
+		Int("entry_count", len(entries)).
+		Int64("buffer_bytes_used", s.usedBytes).
+		Int64("buffer_entries_used", s.usedEntries).
+		Int("active_streams", len(s.streams)).
+		Msg("Enqueueing entries to Loki sink")
+
+	enqueued := 0
+	dropped := 0
 
 	for _, e := range entries {
 		// Check global buffers; drop under pressure with severity-aware policy
@@ -185,6 +196,12 @@ func (s *LokiSink) Enqueue(ctx context.Context, entries []LokiEntry) {
 			sev := strings.ToLower(e.Labels["severity"])
 			if s.shouldDropUnderPressure(sev) {
 				s.metrics.IncLokiDropped(sev, "buffer_full")
+				dropped++
+				s.log.Warn().
+					Str("severity", sev).
+					Str("reason", "buffer_full").
+					Interface("labels", e.Labels).
+					Msg("Dropped log entry due to buffer pressure")
 				continue
 			}
 		}
@@ -194,6 +211,10 @@ func (s *LokiSink) Enqueue(ctx context.Context, entries []LokiEntry) {
 		if buf == nil {
 			buf = &streamBuffer{labels: lbls, lastPush: time.Now()}
 			s.streams[key] = buf
+			s.log.Debug().
+				Str("stream_key", key).
+				Interface("labels", lbls).
+				Msg("Created new stream buffer")
 		}
 		buf.entries = append(buf.entries, e)
 		// Rough size accounting: timestamp+line JSON overhead estimate
@@ -202,6 +223,17 @@ func (s *LokiSink) Enqueue(ctx context.Context, entries []LokiEntry) {
 		buf.bytes += len(e.Line) + 32
 
 		s.metrics.IncLokiEnqueued(strings.ToLower(e.Labels["severity"]))
+		enqueued++
+	}
+
+	if enqueued > 0 || dropped > 0 {
+		s.log.Info().
+			Int("enqueued", enqueued).
+			Int("dropped", dropped).
+			Int64("total_buffer_bytes", s.usedBytes).
+			Int64("total_buffer_entries", s.usedEntries).
+			Int("total_streams", len(s.streams)).
+			Msg("Loki enqueue summary")
 	}
 
 	// Update metrics
@@ -212,7 +244,7 @@ func (s *LokiSink) Enqueue(ctx context.Context, entries []LokiEntry) {
 	s.metrics.SetLokiStreamsActive(len(s.streams))
 }
 
-// streamKey computes a stable key for stream grouping
+// streamKey computes a stable key for stream grouping (for processed logs with static labels)
 func (s *LokiSink) streamKey(labels map[string]string) (string, map[string]string) {
 	// Combine labels for stable key
 	keyLabels := make(map[string]string)
@@ -222,7 +254,7 @@ func (s *LokiSink) streamKey(labels map[string]string) (string, map[string]strin
 		}
 	}
 
-	// Add static labels
+	// Add static labels (for processed logs)
 	for k, v := range s.staticLabels {
 		keyLabels[k] = v
 	}
@@ -242,7 +274,159 @@ func (s *LokiSink) streamKey(labels map[string]string) (string, map[string]strin
 	return strings.Join(keyParts, ","), keyLabels
 }
 
-// shouldDropUnderPressure determines if an entry should be dropped under pressure
+// EnqueuePushRequest enqueues a Loki push request directly without modifications
+// This is used for forwarding raw Loki logs without any processing or label additions
+func (s *LokiSink) EnqueuePushRequest(ctx context.Context, req *logproto.PushRequest) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.log.Debug().
+		Int("stream_count", len(req.Streams)).
+		Int64("buffer_bytes_used", s.usedBytes).
+		Int64("buffer_entries_used", s.usedEntries).
+		Msg("Enqueueing push request to Loki sink")
+
+	enqueued := 0
+	dropped := 0
+
+	for _, stream := range req.Streams {
+		// Parse labels from stream.Labels string (e.g., "{service=\"api\",env=\"prod\"}")
+		labels := parseLokiLabelsString(stream.Labels)
+
+		// Determine severity for metrics (with default)
+		sev := strings.ToLower(labels["severity"])
+		if sev == "" {
+			sev = "info"
+		}
+
+		// Create stream key for grouping
+		key := streamKeyFromLabels(labels)
+
+		// Check each entry in the stream
+		for _, entry := range stream.Entries {
+			// Check global buffers; drop under pressure with severity-aware policy
+			if s.usedBytes >= s.maxBufferBytes || s.usedEntries >= s.maxBufferEntries {
+				if s.shouldDropUnderPressure(sev) {
+					s.metrics.IncLokiDropped(sev, "buffer_full")
+					dropped++
+					s.log.Warn().
+						Str("severity", sev).
+						Str("reason", "buffer_full").
+						Interface("labels", labels).
+						Msg("Dropped log entry due to buffer pressure")
+					continue
+				}
+			}
+
+			// Get or create stream buffer
+			buf := s.streams[key]
+			if buf == nil {
+				buf = &streamBuffer{labels: labels, lastPush: time.Now()}
+				s.streams[key] = buf
+				s.log.Debug().
+					Str("stream_key", key).
+					Interface("labels", labels).
+					Msg("Created new stream buffer")
+			}
+
+			// Convert to LokiEntry and append
+			lokiEntry := LokiEntry{
+				Timestamp: entry.Timestamp,
+				Labels:    labels,
+				Line:      entry.Line,
+			}
+			buf.entries = append(buf.entries, lokiEntry)
+
+			// Update counters
+			s.usedEntries++
+			s.usedBytes += int64(len(entry.Line)) + 32
+			buf.bytes += len(entry.Line) + 32
+
+			s.metrics.IncLokiEnqueued(sev)
+			enqueued++
+		}
+	}
+
+	if enqueued > 0 || dropped > 0 {
+		s.log.Info().
+			Int("enqueued", enqueued).
+			Int("dropped", dropped).
+			Int64("total_buffer_bytes", s.usedBytes).
+			Int64("total_buffer_entries", s.usedEntries).
+			Int("total_streams", len(s.streams)).
+			Msg("Loki push request enqueue summary")
+	}
+
+	// Update metrics
+	s.metrics.IncLokiBufferBytes("used", s.usedBytes)
+	s.metrics.IncLokiBufferBytes("limit", s.maxBufferBytes)
+	s.metrics.IncLokiBufferEntries("used", s.usedEntries)
+	s.metrics.IncLokiBufferEntries("limit", s.maxBufferEntries)
+	s.metrics.SetLokiStreamsActive(len(s.streams))
+}
+
+// parseLokiLabelsString parses Loki labels string format: "{key1=\"value1\",key2=\"value2\"}"
+func parseLokiLabelsString(labelsStr string) map[string]string {
+	labels := make(map[string]string)
+
+	// Remove outer braces
+	labelsStr = strings.Trim(labelsStr, "{}")
+	if labelsStr == "" {
+		return labels
+	}
+
+	// Split by comma and parse each key=value pair
+	pairs := strings.Split(labelsStr, ",")
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		// Find the first = sign
+		eqIndex := strings.Index(pair, "=")
+		if eqIndex == -1 {
+			continue
+		}
+
+		key := strings.TrimSpace(pair[:eqIndex])
+		value := strings.TrimSpace(pair[eqIndex+1:])
+
+		// Remove quotes from value
+		value = strings.Trim(value, "\"")
+
+		labels[key] = value
+	}
+
+	return labels
+}
+
+// streamKeyFromLabels creates a stable key for stream grouping from labels
+func streamKeyFromLabels(labels map[string]string) string {
+	// Select only relevant labels for stream key
+	keyLabels := make(map[string]string)
+	for k, v := range labels {
+		if k == "service" || k == "env" || k == "severity" || k == "namespace" || k == "pod" {
+			keyLabels[k] = v
+		}
+	}
+
+	// Create stable key by sorting and concatenating
+	var keys []string
+	for k := range keyLabels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var keyParts []string
+	for _, k := range keys {
+		keyParts = append(keyParts, fmt.Sprintf("%s=%s", k, keyLabels[k]))
+	}
+
+	return strings.Join(keyParts, ",")
+}
+
+// shouldDropUnderPressure determines if an entry should be dropped under buffer pressure
 func (s *LokiSink) shouldDropUnderPressure(sev string) bool {
 	// Order: debug → info → warn (last), never drop error/fatal here.
 	if s.dropDebugFirst {
@@ -345,6 +529,14 @@ func (s *LokiSink) flushStream(key string) {
 			}
 		}
 
+		// Log the data being sent to Loki
+		s.log.Debug().
+			Str("stream_key", key).
+			Interface("labels", buf.labels).
+			Int("entry_count", len(lp.Streams[0].Values)).
+			Int("approx_bytes", approxBytes).
+			Msg("Sending batch to Loki")
+
 		// Serialize + gzip
 		var bufJSON bytes.Buffer
 		enc := json.NewEncoder(&bufJSON)
@@ -371,6 +563,13 @@ func (s *LokiSink) flushStream(key string) {
 
 		if ok {
 			s.metrics.IncLokiFlush("success")
+			s.log.Info().
+				Int("status", status).
+				Dur("latency", latency).
+				Int("entries_sent", end-startIdx).
+				Interface("labels", buf.labels).
+				Msg("Successfully sent batch to Loki")
+
 			// Adjust global counters
 			s.mu.Lock()
 			for i := startIdx; i < end; i++ {
@@ -380,6 +579,13 @@ func (s *LokiSink) flushStream(key string) {
 			s.mu.Unlock()
 		} else {
 			s.metrics.IncLokiFlush("fail")
+			s.log.Error().
+				Int("status", status).
+				Dur("latency", latency).
+				Int("entries_dropped", end-startIdx).
+				Interface("labels", buf.labels).
+				Msg("Failed to send batch to Loki after retries")
+
 			// On fail after retries: drop these entries (avoid infinite memory growth)
 			sev := strings.ToLower(buf.labels["severity"])
 			dropped := end - startIdx

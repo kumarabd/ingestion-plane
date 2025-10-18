@@ -33,11 +33,11 @@ type Handler struct {
 }
 
 // New creates a new server handler
-func New(l *logger.Handler, m *metrics.Handler, serverConfig *Config, minerConfig *miner.Config, samplerConfig *sampler.SamplerConfig, enforcementConfig *sampler.EnforcementConfig, lokiConfig *loki.LokiConfig, indexFeedConfig *indexfeed.Config, ingest *ingest.Handler) (*Handler, error) {
+func New(l *logger.Handler, m *metrics.Handler, serverConfig *Config, minerConfig *miner.Config, samplerConfig *sampler.SamplerConfig, enforcementConfig *sampler.EnforcementConfig, lokiConfig *loki.LokiConfig, lokiRawConfig *loki.LokiConfig, indexFeedConfig *indexfeed.Config, ingest *ingest.Handler) (*Handler, error) {
 	// Create HTTP server if configured
 	var httpServer *HTTP
 	if serverConfig.HTTP != nil {
-		httpServer = NewHTTP(serverConfig.HTTP, minerConfig, samplerConfig, enforcementConfig, lokiConfig, indexFeedConfig, ingest, l, m)
+		httpServer = NewHTTP(serverConfig.HTTP, minerConfig, samplerConfig, enforcementConfig, lokiConfig, lokiRawConfig, indexFeedConfig, ingest, l, m)
 	}
 
 	// Create gRPC server if configured

@@ -51,7 +51,7 @@ func main() {
 	log.Info().Msg("ingest initialized")
 
 	// Create server instance
-	srv, err := server.New(log, metricsHandler, configHandler.Server, configHandler.Miner, configHandler.Sampler, configHandler.Enforcement, configHandler.Loki, configHandler.IndexFeed, ingestHandler)
+	srv, err := server.New(log, metricsHandler, configHandler.Server, configHandler.Miner, configHandler.Sampler, configHandler.Enforcement, configHandler.Loki, configHandler.LokiRaw, configHandler.IndexFeed, ingestHandler)
 	if err != nil {
 		log.Error().Err(err).Msg("server initialization failed")
 		os.Exit(1)

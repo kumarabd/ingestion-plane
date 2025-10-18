@@ -40,6 +40,11 @@ func (s *HTTP) lokiHandler(c *gin.Context, start time.Time) {
 		return
 	}
 
+	// Send raw logs to loki-raw sink (no modifications, just forward)
+	if s.lokiRawSink != nil {
+		s.lokiRawSink.EnqueuePushRequest(ctx, &lokiReq)
+	}
+
 	// Convert Loki request to standardized RawLogBatch
 	rawLogBatch := s.convertLokiToRawLogBatch(&lokiReq)
 

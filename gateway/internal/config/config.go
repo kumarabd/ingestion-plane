@@ -27,6 +27,7 @@ type Config struct {
 	Sampler     *sampler.SamplerConfig     `json:"sampler" yaml:"sampler"`
 	Enforcement *sampler.EnforcementConfig `json:"enforcement" yaml:"enforcement"`
 	Loki        *loki.LokiConfig           `json:"loki" yaml:"loki"`
+	LokiRaw     *loki.LokiConfig           `json:"loki_raw" yaml:"loki_raw"`
 	IndexFeed   *indexfeed.Config          `json:"indexfeed" yaml:"indexfeed"`
 	Metrics     *metrics.Options           `json:"metrics,omitempty" yaml:"metrics,omitempty"`
 	//Traces  *traces.Options  `json:"traces,omitempty" yaml:"traces,omitempty"`
@@ -106,6 +107,31 @@ func New() (*Config, error) {
 			Labels: loki.LabelConfig{
 				Static: map[string]string{
 					"gateway": "true",
+					"type":    "processed",
+				},
+			},
+		},
+		LokiRaw: &loki.LokiConfig{
+			Addr:             "http://loki-raw:3100",
+			FlushInterval:    400 * time.Millisecond,
+			MaxBatchBytes:    1000000, // 1MB
+			MaxBatchEntries:  5000,
+			MaxBufferBytes:   268435456, // 256MB
+			MaxBufferEntries: 1000000,
+			RequestTimeout:   5 * time.Second,
+			Retry: loki.RetryConfig{
+				Enabled:        true,
+				InitialBackoff: 200 * time.Millisecond,
+				MaxBackoff:     5 * time.Second,
+			},
+			DropPolicy: loki.DropPolicy{
+				DebugFirst:  true,
+				ProtectInfo: false, // Don't protect info for raw logs - high volume
+			},
+			Labels: loki.LabelConfig{
+				Static: map[string]string{
+					"gateway": "true",
+					"type":    "raw",
 				},
 			},
 		},

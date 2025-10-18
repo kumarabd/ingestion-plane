@@ -50,16 +50,16 @@ enforcement:
   by_namespace:                 # Per-namespace overrides
     staging: true
 
-# Loki sink configuration - MOCK MODE for local development
+# Loki sink configuration - PROCESSED LOGS
 loki:
-  addr: "http://loki:3100"
+  addr: "http://localhost:3100"
   flush_interval: "400ms"
   max_batch_bytes: 1000000      # 1MB
   max_batch_entries: 5000
   max_buffer_bytes: 268435456   # 256MB
   max_buffer_entries: 1000000
   request_timeout: "5s"
-  mock_mode: true               # ENABLED for local development (outputs to stdout)
+  mock_mode: false               # ENABLED for local development (outputs to stdout)
   retry:
     enabled: true
     initial_backoff: "200ms"
@@ -70,6 +70,29 @@ loki:
   labels:
     static:
       gateway: "true"
+      type: "processed"
+
+# Loki sink configuration - RAW LOGS
+loki_raw:
+  addr: "http://localhost:3101"
+  flush_interval: "400ms"
+  max_batch_bytes: 1000000      # 1MB
+  max_batch_entries: 5000
+  max_buffer_bytes: 268435456   # 256MB
+  max_buffer_entries: 1000000
+  request_timeout: "5s"
+  mock_mode: false               # ENABLED for local development (outputs to stdout)
+  retry:
+    enabled: true
+    initial_backoff: "200ms"
+    max_backoff: "5s"
+  drop_policy:
+    debug_first: true
+    protect_info: false          # Don't protect info for raw logs - high volume
+  labels:
+    static:
+      gateway: "true"
+      type: "raw"
 
 # IndexFeed service configuration - LOCAL DEVELOPMENT
 indexfeed:
