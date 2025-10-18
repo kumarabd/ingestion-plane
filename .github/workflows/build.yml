@@ -1,0 +1,135 @@
+# Workflow for building and deploying docker images to GitHub Packages
+name: Build and Deploy Docker Images
+
+on:
+  push:
+    branches: ["main"]
+
+  workflow_dispatch:
+
+jobs:
+  build-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push gateway image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./gateway
+          file: ./gateway/Dockerfile
+          tags: ghcr.io/kumarabd/ingestion-plane/gateway:latest
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  build-indexfeed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push indexfeed image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./indexfeed
+          file: ./indexfeed/Dockerfile
+          tags: ghcr.io/kumarabd/ingestion-plane/indexfeed:latest
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  build-miner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push miner image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./miner
+          file: ./miner/Dockerfile
+          tags: ghcr.io/kumarabd/ingestion-plane/miner:latest
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  build-planner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push planner image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./planner
+          file: ./planner/Dockerfile
+          tags: ghcr.io/kumarabd/ingestion-plane/planner:latest
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  build-sampler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push sampler image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./sampler
+          file: ./sampler/Dockerfile
+          tags: ghcr.io/kumarabd/ingestion-plane/sampler:latest
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

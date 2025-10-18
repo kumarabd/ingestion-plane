@@ -6,415 +6,478 @@ permalink: /docs/reference/api-reference/
 
 # API Reference
 
+Complete API documentation for the Ingestion Plane Gateway service.
+
 ## Base URL
 
-All API endpoints are relative to the base URL:
+**Local Development:**
 ```
-https://log-analyzer.example.com/api/v1
-```
-
-## API Flow
-
-{% mermaid %}
-sequenceDiagram
-    participant Client
-    participant API
-    participant Index
-    participant Loki
-    
-    Client->>API: POST /search
-    API->>Index: Query templates
-    Index-->>API: Return matching templates
-    API->>API: Generate LogQL
-    API->>Loki: Execute LogQL query
-    Loki-->>API: Return log results
-    API-->>Client: Return search results
-{% endmermaid %}
-
-## Authentication
-
-The API uses API key authentication. Include your API key in the request header:
-
-```bash
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-     https://log-analyzer.example.com/api/v1/search
+http://localhost:8001
 ```
 
-## Search API
+**Production:**
+```
+https://ingestion-plane.example.com
+```
 
-### Search Templates
+## Ingestion APIs
 
-Search for log templates using natural language queries.
+### Auto-Detect Endpoint
 
-**Endpoint:** `POST /search`
+Auto-detects protocol based on Content-Type header.
+
+**Endpoint:** `POST /v1/ingest`
+
+**Supported Content Types:**
+- `application/json` → Routes to JSON handler
+- `application/x-protobuf` → Routes to OTLP handler
+
+---
+
+### OTLP Ingestion
+
+Ingest logs using OpenTelemetry Protocol (OTLP).
+
+**Endpoint:** `POST /v1/ingest/otlp`
 
 **Request:**
-```json
-{
-  "query": "authentication failures",
-  "filters": {
-    "service": ["auth-service"],
-    "environment": ["production"],
-    "severity": ["error", "fatal"],
-    "time_range": {
-      "start": "2024-01-15T10:00:00Z",
-      "end": "2024-01-15T12:00:00Z"
-    }
-  },
-  "limit": 10,
-  "include_explanations": true
-}
-```
+```http
+POST /v1/ingest/otlp HTTP/1.1
+Host: localhost:8001
+Content-Type: application/x-protobuf
 
-**Response:**
-```json
-{
-  "results": [
-    {
-      "template_id": "abc123",
-      "template_text": "Authentication failed for user <string>",
-      "score": 0.95,
-      "service": "auth-service",
-      "support_count": 45,
-      "first_seen": "2024-01-15T11:30:00Z",
-      "last_seen": "2024-01-15T11:45:00Z",
-      "explanation": {
-        "matched_tokens": ["authentication", "failed"],
-        "semantic_similarity": 0.95
-      }
-    }
-  ],
-  "query_plan": {
-    "generated_logql": "{service=\"auth-service\"} |= \"Authentication failed\"",
-    "explanation": "Searching for authentication failures in auth-service"
-  },
-  "metadata": {
-    "total_results": 1,
-    "search_time_ms": 25
-  }
-}
-```
-
-### Get Template Details
-
-Retrieve detailed information about a specific template.
-
-**Endpoint:** `GET /templates/{template_id}`
-
-**Response:**
-```json
-{
-  "template_id": "abc123",
-  "template_text": "Authentication failed for user <string>",
-  "regex_text": "Authentication failed for user .+",
-  "service": "auth-service",
-  "first_seen": "2024-01-15T11:30:00Z",
-  "last_seen": "2024-01-15T11:45:00Z",
-  "support_count": 45,
-  "statistics": {
-    "total_occurrences": 45,
-    "rate_per_minute": 3.0,
-    "peak_rate": 8.0
-  },
-  "exemplars": [
-    "Authentication failed for user john.doe",
-    "Authentication failed for user admin"
-  ]
-}
-```
-
-## Template Management API
-
-### List Templates
-
-Get a list of templates with optional filtering.
-
-**Endpoint:** `GET /templates`
-
-**Query Parameters:**
-- `service`: Filter by service name
-- `environment`: Filter by environment
-- `severity`: Filter by severity level
-- `limit`: Maximum number of results (default: 100)
-- `offset`: Number of results to skip (default: 0)
-
-**Response:**
-```json
-{
-  "templates": [
-    {
-      "template_id": "abc123",
-      "template_text": "Authentication failed for user <string>",
-      "service": "auth-service",
-      "support_count": 45,
-      "last_seen": "2024-01-15T11:45:00Z"
-    }
-  ],
-  "pagination": {
-    "total": 150,
-    "limit": 100,
-    "offset": 0,
-    "has_more": true
-  }
-}
-```
-
-### Get Template Statistics
-
-Get statistical information about templates.
-
-**Endpoint:** `GET /templates/stats`
-
-**Response:**
-```json
-{
-  "total_templates": 1250,
-  "templates_by_service": {
-    "auth-service": 45,
-    "api-gateway": 32,
-    "user-service": 28
-  },
-  "templates_by_severity": {
-    "error": 120,
-    "warn": 85,
-    "info": 1045
-  },
-  "recent_activity": {
-    "new_templates_24h": 12,
-    "updated_templates_24h": 8
-  }
-}
-```
-
-## Sampling API
-
-### Get Sampling Metrics
-
-Retrieve sampling performance metrics.
-
-**Endpoint:** `GET /sampling/metrics`
-
-**Response:**
-```json
-{
-  "total_logs_processed": 1000000,
-  "logs_kept": 150000,
-  "logs_suppressed": 850000,
-  "sampling_rate": 0.15,
-  "metrics_by_reason": {
-    "always_keep_errors": 50000,
-    "novel_templates": 25000,
-    "spike_detection": 15000,
-    "logarithmic_sampling": 60000
-  },
-  "performance": {
-    "avg_processing_time_ms": 2.5,
-    "p95_processing_time_ms": 8.0
-  }
-}
-```
-
-### Update Sampling Policy
-
-Update sampling policies for a tenant.
-
-**Endpoint:** `PUT /sampling/policies/{tenant}`
-
-**Request:**
-```json
-{
-  "rules": [
-    {
-      "name": "always_keep_errors",
-      "condition": "severity in ['error', 'fatal']",
-      "action": "keep",
-      "priority": 1
-    }
-  ],
-  "budgets": {
-    "max_qps": 10000,
-    "burst_limit": 15000
-  }
-}
+[OTLP ExportLogsServiceRequest protobuf binary]
 ```
 
 **Response:**
 ```json
 {
   "status": "success",
-  "message": "Sampling policy updated successfully",
-  "policy_id": "tenant-default-v2"
+  "records_received": 100
 }
 ```
 
-## Health and Monitoring API
+**Features:**
+- Full OTLP compliance
+- Resource attributes preserved
+- Scope and log attributes captured
+- All logs go through processing pipeline
 
-### Health Check
+---
 
-Check the health status of the system.
+### Loki Push API
 
-**Endpoint:** `GET /health`
+Ingest logs using Grafana Loki Push API format.
+
+**Endpoint:** `POST /loki/api/v1/push`
+
+**Special Behavior:**
+- **Raw Logs**: Forwarded to Loki-Raw (port 3101) with ZERO modifications
+- **Processed Logs**: Also go through full pipeline to Loki (port 3100)
+
+**Request:**
+```http
+POST /loki/api/v1/push HTTP/1.1
+Host: localhost:8001
+Content-Type: application/json
+Content-Encoding: gzip (optional)
+
+{
+  "streams": [
+    {
+      "stream": {
+        "service": "api",
+        "env": "production",
+        "severity": "error"
+      },
+      "values": [
+        ["1704110400000000000", "Error: Connection timeout to database"],
+        ["1704110401000000000", "Error: Retry failed after 3 attempts"]
+      ]
+    }
+  ]
+}
+```
 
 **Response:**
 ```json
 {
-  "status": "healthy",
-  "timestamp": "2024-01-15T12:00:00Z",
-  "components": {
-    "template_miner": "healthy",
-    "sampler": "healthy",
-    "semantic_indexer": "healthy",
-    "redis": "healthy"
-  },
-  "metrics": {
-    "uptime_seconds": 86400,
-    "memory_usage_percent": 65.2,
-    "cpu_usage_percent": 23.8
-  }
+  "status": "success"
 }
 ```
 
-### System Metrics
+**Label Format:**
+- Labels in `stream` object (not in the log line)
+- Timestamp in nanoseconds since Unix epoch
+- Multiple streams per request supported
 
-Get detailed system performance metrics.
+---
+
+### JSON Ingestion
+
+Ingest logs using simple JSON format.
+
+**Endpoint:** `POST /api/v1/logs`
+
+**Request:**
+```http
+POST /api/v1/logs HTTP/1.1
+Host: localhost:8001
+Content-Type: application/json
+
+{
+  "records": [
+    {
+      "timestamp": "2024-01-01T12:00:00Z",
+      "labels": {
+        "service": "api",
+        "env": "production",
+        "severity": "info",
+        "namespace": "default",
+        "pod": "api-5d7c8f9b-xyz"
+      },
+      "payload": "User 12345 logged in from 192.168.1.100",
+      "format_hint": "text"
+    }
+  ]
+}
+```
+
+**Fields:**
+- `timestamp` (optional): ISO 8601 format, defaults to current time
+- `labels` (optional): Key-value pairs for metadata
+- `payload` (required): The actual log message
+- `format_hint` (optional): "json", "logfmt", or "text"
+
+**Response:**
+```json
+{
+  "status": "success",
+  "records_received": 1
+}
+```
+
+**Processing:**
+- All logs go through normalization
+- PII redaction applied
+- Sent through Miner → Sampler → IndexFeed pipeline
+- Kept logs sent to Loki (Processed) only
+
+---
+
+## Operational APIs
+
+### Health Check
+
+**Endpoint:** `GET /healthz`
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "time": "2024-01-01T12:00:00Z"
+}
+```
+
+**Use Cases:**
+- Kubernetes liveness probes
+- Load balancer health checks
+- Monitoring systems
+
+---
+
+### Prometheus Metrics
 
 **Endpoint:** `GET /metrics`
 
 **Response:**
+```
+# HELP gateway_ingest_requests_total Total ingestion requests
+# TYPE gateway_ingest_requests_total counter
+gateway_ingest_requests_total{protocol="loki",status="success"} 1234
+
+# HELP gateway_loki_enqueued_total Logs enqueued to Loki
+# TYPE gateway_loki_enqueued_total counter
+gateway_loki_enqueued_total{sink="processed",severity="info"} 500
+gateway_loki_enqueued_total{sink="raw",severity="info"} 1000
+
+# HELP gateway_loki_dropped_total Logs dropped by Loki sink
+# TYPE gateway_loki_dropped_total counter
+gateway_loki_dropped_total{sink="processed",severity="debug",reason="buffer_full"} 10
+
+# ... more metrics
+```
+
+**Key Metrics:**
+
+**Ingestion:**
+- `gateway_ingest_requests_total{protocol,status}`
+- `gateway_ingest_records_total{protocol,severity}`
+- `gateway_ingest_rejected_total{reason}`
+
+**Loki:**
+- `gateway_loki_enqueued_total{sink,severity}`
+- `gateway_loki_dropped_total{sink,severity,reason}`
+- `gateway_loki_buffer_bytes{sink,state}`
+- `gateway_loki_flush_total{sink,status}`
+
+**Pipeline:**
+- `gateway_miner_requests_total{status}`
+- `gateway_sampler_decisions_total{action,reason}`
+
+---
+
+## Data Flow
+
+### Loki Push API → Dual Path
+
+```
+POST /loki/api/v1/push
+         │
+         ├─→ EnqueuePushRequest() → Loki-Raw (zero modifications)
+         │
+         └─→ Pipeline Processing:
+                Normalize → Miner → Sampler → Loki (Processed)
+```
+
+### JSON/OTLP → Single Path
+
+```
+POST /api/v1/logs or /v1/ingest/otlp
+         │
+         └─→ Pipeline Processing:
+                Normalize → Miner → Sampler → Loki (Processed)
+                                 ↓
+                            IndexFeed → Qdrant
+```
+
+## Error Responses
+
+### 400 Bad Request
+
 ```json
 {
-  "system": {
-    "uptime_seconds": 86400,
-    "memory_usage_bytes": 2147483648,
-    "cpu_usage_percent": 23.8,
-    "disk_usage_percent": 45.2
-  },
-  "processing": {
-    "logs_per_second": 1500,
-    "templates_per_second": 25,
-    "avg_processing_latency_ms": 2.5
-  },
-  "sampling": {
-    "total_processed": 1000000,
-    "kept": 150000,
-    "suppressed": 850000,
-    "sampling_rate": 0.15
-  }
+  "error": "invalid loki request format"
 }
 ```
 
-## Error Handling
+**Causes:**
+- Malformed JSON
+- Invalid timestamp format
+- Missing required fields
 
-### Error Response Format
-
-All API errors follow this format:
+### 503 Service Unavailable
 
 ```json
 {
-  "error": {
-    "code": "INVALID_QUERY",
-    "message": "Query contains invalid characters",
-    "details": {
-      "field": "query",
-      "value": "invalid query",
-      "suggestion": "Use alphanumeric characters only"
-    },
-    "request_id": "req_123456789",
-    "timestamp": "2024-01-15T12:00:00Z"
-  }
+  "error": "service busy, please retry"
 }
 ```
 
-### Common Error Codes
+**Causes:**
+- Internal queue full
+- Backpressure from downstream services
+- Rate limiting triggered
 
-| Code | Description |
-|------|-------------|
-| `INVALID_QUERY` | Malformed search query |
-| `RATE_LIMIT_EXCEEDED` | Too many requests |
-| `TEMPLATE_NOT_FOUND` | Template ID doesn't exist |
-| `INDEX_UNAVAILABLE` | Search index is temporarily unavailable |
-| `AUTHENTICATION_FAILED` | Invalid or missing authentication |
-| `AUTHORIZATION_FAILED` | Insufficient permissions |
-| `VALIDATION_ERROR` | Request validation failed |
-| `INTERNAL_ERROR` | Internal server error |
+**Solution:** Retry with exponential backoff
 
-### Rate Limiting
+### 413 Request Entity Too Large
 
-API requests are rate limited to prevent abuse:
-
-- **Search API**: 100 requests per minute per API key
-- **Template API**: 200 requests per minute per API key
-- **Management API**: 50 requests per minute per API key
-
-Rate limit headers are included in responses:
-```
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1642248000
+```json
+{
+  "error": "Request body too large"
+}
 ```
 
-## SDKs and Libraries
+**Causes:**
+- Request exceeds `max_message_bytes` (default 1MB)
 
-### Python SDK
+**Solution:** Split into smaller batches
+
+## Rate Limiting
+
+Currently no explicit rate limiting. Backpressure is handled via:
+- Bounded internal queues
+- Sampler budget enforcement
+- Loki sink buffer limits
+
+## Examples
+
+### Python Client
 
 ```python
-from log_analyzer import LogAnalyzerClient
+import requests
+import json
+from datetime import datetime
 
-client = LogAnalyzerClient(api_key="your-api-key")
+def send_logs(logs):
+    url = "http://localhost:8001/api/v1/logs"
+    payload = {
+        "records": [
+            {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "labels": {
+                    "service": log["service"],
+                    "env": "production",
+                    "severity": log["level"]
+                },
+                "payload": log["message"]
+            }
+            for log in logs
+        ]
+    }
+    
+    response = requests.post(url, json=payload)
+    return response.json()
 
-# Search for templates
-results = client.search(
-    query="authentication failures",
-    filters={"service": ["auth-service"]},
-    limit=10
+# Example usage
+logs = [
+    {"service": "api", "level": "info", "message": "User logged in"},
+    {"service": "api", "level": "error", "message": "Database connection failed"}
+]
+
+result = send_logs(logs)
+print(result)
+```
+
+### Go Client
+
+```go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+    "time"
 )
 
-# Get template details
-template = client.get_template("abc123")
-```
+type LogRecord struct {
+    Timestamp string            `json:"timestamp"`
+    Labels    map[string]string `json:"labels"`
+    Payload   string            `json:"payload"`
+}
 
-### JavaScript SDK
+type LogBatch struct {
+    Records []LogRecord `json:"records"`
+}
 
-```javascript
-import { LogAnalyzerClient } from '@log-analyzer/sdk';
+func sendLogs(logs []LogRecord) error {
+    batch := LogBatch{Records: logs}
+    
+    body, err := json.Marshal(batch)
+    if err != nil {
+        return err
+    }
+    
+    resp, err := http.Post(
+        "http://localhost:8001/api/v1/logs",
+        "application/json",
+        bytes.NewReader(body),
+    )
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+    
+    return nil
+}
 
-const client = new LogAnalyzerClient({
-  apiKey: 'your-api-key',
-  baseUrl: 'https://log-analyzer.example.com'
-});
-
-// Search for templates
-const results = await client.search({
-  query: 'authentication failures',
-  filters: { service: ['auth-service'] },
-  limit: 10
-});
-```
-
-## Webhooks
-
-### Template Events
-
-Subscribe to template-related events:
-
-**Endpoint:** `POST /webhooks/templates`
-
-**Request:**
-```json
-{
-  "url": "https://your-app.com/webhooks/templates",
-  "events": ["template_new", "template_update", "template_spike"],
-  "secret": "your-webhook-secret"
+func main() {
+    logs := []LogRecord{
+        {
+            Timestamp: time.Now().UTC().Format(time.RFC3339),
+            Labels: map[string]string{
+                "service": "api",
+                "env": "production",
+                "severity": "info",
+            },
+            Payload: "Request processed successfully",
+        },
+    }
+    
+    sendLogs(logs)
 }
 ```
 
-**Webhook Payload:**
-```json
-{
-  "event_type": "template_new",
-  "template_id": "abc123",
-  "template_text": "Authentication failed for user <string>",
-  "service": "auth-service",
-  "timestamp": "2024-01-15T12:00:00Z"
-}
+### cURL with Loki API
+
+```bash
+#!/bin/bash
+# send-loki-logs.sh
+
+TIMESTAMP=$(date +%s%N)  # Nanoseconds
+
+curl -X POST http://localhost:8001/loki/api/v1/push \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"streams\": [
+      {
+        \"stream\": {
+          \"service\": \"my-app\",
+          \"env\": \"dev\",
+          \"severity\": \"info\"
+        },
+        \"values\": [
+          [\"$TIMESTAMP\", \"Application started successfully\"]
+        ]
+      }
+    ]
+  }"
 ```
+
+## Best Practices
+
+### Label Naming
+
+Use consistent label keys:
+- `service` - Service name (required)
+- `env` - Environment (dev, staging, prod)
+- `severity` - Log level (debug, info, warn, error, fatal)
+- `namespace` - Kubernetes namespace
+- `pod` - Pod name
+- `host` - Hostname
+
+### Batch Size
+
+- **Small batches** (< 100): Good for real-time
+- **Medium batches** (100-1000): Balanced
+- **Large batches** (1000+): Maximum throughput
+
+### Timestamp Format
+
+**JSON API:** ISO 8601
+```
+2024-01-01T12:00:00Z
+2024-01-01T12:00:00.123Z
+2024-01-01T12:00:00+00:00
+```
+
+**Loki API:** Nanoseconds since Unix epoch
+```
+1704110400000000000
+```
+
+### Error Handling
+
+Always implement retry logic:
+```python
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
+retry_strategy = Retry(
+    total=3,
+    status_forcelist=[429, 500, 502, 503, 504],
+    backoff_factor=1
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+http = requests.Session()
+http.mount("http://", adapter)
+```
+
+## See Also
+
+- [Gateway Service](gateway-service/) - Detailed Gateway documentation
+- [Getting Started](../implement/getting-started/) - Setup guide
+- [System Architecture](../learn/architecture/) - Architecture overview
+- [Troubleshooting](../implement/troubleshooting/) - Common issues

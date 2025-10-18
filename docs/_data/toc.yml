@@ -1,29 +1,35 @@
 - title: "Learn"
-  url: "docs/learn/overview"
+  url: "/docs/learn/overview/"
   children:
     - title: Overview
-      url: "docs/learn/overview"
+      url: "/docs/learn/overview/"
+    - title: Architecture
+      url: "/docs/learn/architecture/"
     - title: Problem & Strategy
-      url: "docs/learn/overview/problem-strategy"
+      url: "/docs/learn/overview/problem-strategy/"
     - title: Use Cases
-      url: "docs/learn/overview/use-cases"
+      url: "/docs/learn/overview/use-cases/"
 - title: "Implement"
-  url: "docs/implement/getting-started"
+  url: "/docs/implement/getting-started/"
   children:
     - title: Getting Started
-      url: "docs/implement/getting-started"
+      url: "/docs/implement/getting-started/"
     - title: User Guide
-      url: "docs/implement/user-guide"
+      url: "/docs/implement/user-guide/"
     - title: Troubleshooting
-      url: "docs/implement/troubleshooting"
+      url: "/docs/implement/troubleshooting/"
 - title: "Reference"
-  url: "docs/reference/component-specs"
+  url: "/docs/reference/component-specs/"
   children:
     - title: Component Specifications
-      url: "docs/reference/component-specs"
+      url: "/docs/reference/component-specs/"
+    - title: Gateway Service
+      url: "/docs/reference/gateway-service/"
+    - title: Component Services
+      url: "/docs/reference/component-services/"
     - title: Data Contracts & APIs
-      url: "docs/reference/data-contracts"
+      url: "/docs/reference/data-contracts/"
     - title: API Reference
-      url: "docs/reference/api-reference"
+      url: "/docs/reference/api-reference/"
 - title: "About"
-  url: "about"
+  url: "/about/"

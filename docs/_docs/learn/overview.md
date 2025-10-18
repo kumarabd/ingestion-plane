@@ -4,18 +4,19 @@ title: Overview
 permalink: /docs/learn/overview/
 ---
 
-# Log Analyzer Overview
+# Ingestion Plane Overview
 
-The Log Analyzer is a "grepr-like" ingestion plane that performs online template mining and smart sampling, emits index-feed events for a semantic index, and leaves Loki as ground truth and query execution.
+The Ingestion Plane is an intelligent log processing system that performs online template mining, smart sampling, and semantic indexing while maintaining dual Loki instances for raw and processed log storage.
 
-## What is Log Analyzer?
+## What is the Ingestion Plane?
 
-Log Analyzer is a comprehensive log management and analysis system designed to solve the fundamental challenges of modern log processing:
+The Ingestion Plane is a comprehensive log management and analysis system designed to solve the fundamental challenges of modern log processing:
 
-- **Volume Management**: Intelligently reduce log volume while preserving critical information
-- **Pattern Discovery**: Automatically identify and catalog log patterns in real-time
-- **Semantic Search**: Enable natural language queries over log data
-- **Cost Optimization**: Achieve 60-90% reduction in log storage and processing costs
+- **Dual Storage Strategy**: Raw logs for compliance, processed logs for analysis
+- **Volume Management**: Intelligently reduce log volume while preserving critical information (60-90% reduction)
+- **Pattern Discovery**: Automatically identify and catalog log patterns in real-time using Drain3
+- **Semantic Search**: Enable natural language queries over log data via vector embeddings
+- **Multi-Protocol Support**: OTLP, Loki Push API, JSON - all ingestion methods supported
 
 ## Key Capabilities
 
@@ -92,12 +93,30 @@ flowchart LR
 
 ## Data Flow
 
-1. **Ingestion**: Logs enter through various collectors and are routed to the Grepr Gateway
-2. **Processing**: Logs are parsed, masked, and analyzed for patterns
-3. **Sampling**: Intelligent decisions are made about which logs to keep vs. suppress
-4. **Storage**: Kept logs go to Loki as ground truth; suppressed logs generate metrics only
-5. **Indexing**: Template patterns are sent to the semantic index for search capabilities
-6. **Querying**: Users can search semantically, which translates to LogQL queries against Loki
+### Raw Log Path (Loki Push API Only)
+1. **Direct Forwarding**: Loki API requests forwarded to Loki-Raw without modifications
+2. **Zero Processing**: Maintains exact copy of incoming logs for compliance/debugging
+
+### Processed Log Path (All Sources)
+1. **Ingestion**: Logs enter through OTLP, Loki API, or JSON endpoints
+2. **Normalization**: Logs are parsed, masked, and PII redacted
+3. **Mining**: Template patterns discovered using Drain3 algorithm
+4. **Sampling**: Intelligent keep/suppress decisions based on multiple criteria
+5. **Storage**: Kept logs go to Loki (Processed) with enriched metadata
+6. **Indexing**: Template patterns converted to embeddings in Qdrant
+7. **Querying**: Natural language searches translate to LogQL queries
+
+## Core Services
+
+The system consists of five microservices:
+
+1. **Gateway (Go)**: Multi-protocol ingestion, orchestration, dual Loki sinks
+2. **Miner (Python)**: Drain3-based template discovery and clustering
+3. **Sampler (Go)**: Intelligent keep/suppress decisions with budget enforcement
+4. **IndexFeed (Go)**: Vector embedding generation and semantic indexing
+5. **Planner (Go)**: Natural language to LogQL query translation
+
+For detailed information, see the [System Architecture](architecture/) documentation.
 
 ## Benefits
 

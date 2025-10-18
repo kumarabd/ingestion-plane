@@ -4,265 +4,453 @@ title: Getting Started
 permalink: /docs/implement/getting-started/
 ---
 
-# Getting Started with Log Analyzer
+# Getting Started with Ingestion Plane
 
-This guide will help you get started with the Log Analyzer system, from understanding the basics to setting up your first log analysis pipeline.
+This guide will help you set up and run the Ingestion Plane system, from deploying infrastructure to sending your first logs.
 
 ## Prerequisites
 
 Before you begin, ensure you have:
 
-- **Loki**: A running Loki instance for log storage
-- **Log Sources**: Applications or services generating logs
-- **Kubernetes**: For containerized deployment (optional)
-- **Redis**: For state management and caching
-- **Message Queue**: Kafka or similar for index-feed events
+- **Docker & Docker Compose**: For running infrastructure services
+- **Go 1.21+**: For building Gateway, Sampler, IndexFeed, Planner
+- **Python 3.10+**: For running Miner service
+- **Poetry**: Python dependency management
+- **Make**: For building protobuf contracts
 
-## Quick Start
+## Quick Start (Local Development)
 
-### 1. Deploy Log Analyzer
-
-Deploy the Log Analyzer components to your infrastructure:
+### 1. Start Infrastructure Services
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/log-analyzer.git
-cd log-analyzer
+cd deploy
 
-# Deploy using Helm (recommended)
-helm install log-analyzer ./charts/log-analyzer \
-  --set loki.url=http://loki:3100 \
-  --set redis.url=redis://redis:6379 \
-  --set kafka.brokers=kafka:9092
+# Start Redis, PostgreSQL, Qdrant, Loki (both instances), and Grafana
+docker-compose up -d
+
+# Verify all services are healthy
+docker-compose ps
+
+# Expected output:
+# redis-server         Up (healthy)
+# postgres-server      Up (healthy)
+# qdrant-server        Up (healthy)
+# loki-server          Up (healthy)
+# loki-raw-server      Up (healthy)
+# grafana-server       Up (healthy)
 ```
 
-### 2. Configure Log Ingestion
+**Services Started:**
+- Redis: `localhost:6379` - Shared state
+- PostgreSQL: `localhost:5432` - Metadata storage
+- Qdrant: `localhost:6333` - Vector store
+- Loki (Processed): `localhost:3100` - Sampled logs (30-day retention)
+- Loki-Raw: `localhost:3101` - Raw logs (7-day retention)
+- Grafana: `localhost:3000` - Dashboards (admin/admin)
 
-Set up log collection from your applications:
+### 2. Generate Protobuf Contracts
 
-```yaml
-# promtail-config.yaml
-server:
-  http_listen_port: 9080
-  grpc_listen_port: 0
+```bash
+cd contracts
 
-positions:
-  filename: /tmp/positions.yaml
+# Generate Python stubs (for Miner)
+make gen-python
 
-clients:
-  - url: http://log-analyzer:3100/loki/api/v1/push
-
-scrape_configs:
-  - job_name: applications
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: applications
-          __path__: /var/log/apps/*.log
-    pipeline_stages:
-      - match:
-          selector: '{job="applications"}'
-          stages:
-            - regex:
-                expression: '^(?P<timestamp>\S+) (?P<level>\S+) (?P<message>.*)'
-            - labels:
-                level:
-            - timestamp:
-                source: timestamp
-                format: RFC3339
+# Generate Go stubs (for Gateway, Sampler, IndexFeed, Planner)
+make gen-go
 ```
 
-### 3. Configure Sampling Policies
+### 3. Start Miner Service (Python)
 
-Create sampling policies for your environment:
+```bash
+cd miner
 
-```yaml
-# sampling-policy.yaml
-sampling_policy:
-  tenant: "default"
-  rules:
-    - name: "always_keep_errors"
-      condition: "severity in ['error', 'fatal']"
-      action: "keep"
-      priority: 1
-    
-    - name: "novel_templates"
-      condition: "template_age < 24h"
-      action: "keep"
-      priority: 2
-    
-    - name: "spike_detection"
-      condition: "rate > p95 * 2.0"
-      action: "keep"
-      priority: 3
-    
-    - name: "logarithmic_sampling"
-      condition: "count in [1,2,4,8,16,32,64,128,256,512,1024]"
-      action: "keep"
-      priority: 4
+# Install dependencies
+poetry install
 
-  budgets:
-    max_qps: 10000
-    burst_limit: 15000
+# Run service
+poetry run python main.py
+
+# Service starts on port 50051
+# You should see: "Miner service started on 50051"
 ```
 
-### 4. Set Up PII Redaction
+### 4. Start Sampler Service (Go)
 
-Configure PII redaction rules:
+```bash
+cd sampler
 
-```yaml
-# pii-rules.yaml
-pii_rules:
-  - name: "email_addresses"
-    pattern: "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"
-    replacement: "<email>"
-    severity: "high"
-  
-  - name: "credit_cards"
-    pattern: "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\\b"
-    replacement: "<credit_card>"
-    severity: "critical"
-  
-  - name: "ip_addresses"
-    pattern: "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
-    replacement: "<ip>"
-    severity: "medium"
+# Build and run
+go run main.go
+
+# Service starts on port 50060
+# You should see: "Sampler service started on 50060"
+```
+
+### 5. Start IndexFeed Service (Go)
+
+```bash
+cd indexfeed
+
+# Build and run
+go run main.go
+
+# Service starts on port 50070
+# You should see: "IndexFeed service started on 50070"
+```
+
+### 6. Start Gateway Service (Go)
+
+```bash
+cd gateway
+
+# Build
+make build
+
+# Run with local configuration
+./gateway -config config-local.yaml
+
+# Gateway starts on port 8001
+# You should see: "Starting HTTP server on 0.0.0.0:8001"
+```
+
+## Verify Installation
+
+### Check Service Health
+
+```bash
+# Gateway health
+curl http://localhost:8001/healthz
+# Expected: {"status":"ok","time":"..."}
+
+# Loki (Processed) health
+curl http://localhost:3100/ready
+# Expected: ready
+
+# Loki-Raw health  
+curl http://localhost:3101/ready
+# Expected: ready
+
+# Grafana health
+curl http://localhost:3000/api/health
+# Expected: {"database":"ok",...}
+```
+
+### Send Test Logs
+
+#### JSON API
+
+```bash
+curl -X POST http://localhost:8001/api/v1/logs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "records": [
+      {
+        "timestamp": "2024-01-01T12:00:00Z",
+        "labels": {
+          "service": "api",
+          "env": "dev",
+          "severity": "info"
+        },
+        "payload": "User 12345 logged in successfully"
+      }
+    ]
+  }'
+
+# Expected: 200 OK
+```
+
+#### Loki Push API (Goes to Both Raw and Processed)
+
+```bash
+curl -X POST http://localhost:8001/loki/api/v1/push \
+  -H "Content-Type: application/json" \
+  -d '{
+    "streams": [
+      {
+        "stream": {
+          "service": "api",
+          "env": "dev",
+          "severity": "info"
+        },
+        "values": [
+          ["1704110400000000000", "User authentication successful"]
+        ]
+      }
+    ]
+  }'
+
+# Expected: {"status":"success"}
+```
+
+### Query Logs in Grafana
+
+1. **Open Grafana**: http://localhost:3000
+2. **Login**: admin / admin
+3. **Navigate to Explore**
+4. **Select Datasource**:
+   - **Loki (Raw)** - See unmodified logs
+   - **Loki (Processed)** - See sampled, enriched logs
+
+5. **Run Queries**:
+
+**Raw logs:**
+```logql
+{type="raw", service="api"}
+```
+
+**Processed logs:**
+```logql
+{type="processed", service="api", gateway="true"}
+```
+
+**With template information:**
+```logql
+{type="processed"} | json | line_format "{% raw %}{{.message}} [{{.template_id}}]{% endraw %}"
 ```
 
 ## Configuration
 
-### Environment Variables
+### Gateway Configuration
 
-Configure the Log Analyzer using environment variables:
-
-```bash
-# Core settings
-LOG_ANALYZER_LOKI_URL=http://loki:3100
-LOG_ANALYZER_REDIS_URL=redis://redis:6379
-LOG_ANALYZER_KAFKA_BROKERS=kafka:9092
-
-# Sampling settings
-LOG_ANALYZER_SAMPLING_POLICY_PATH=/config/sampling-policy.yaml
-LOG_ANALYZER_PII_RULES_PATH=/config/pii-rules.yaml
-
-# Performance settings
-LOG_ANALYZER_MAX_QPS=10000
-LOG_ANALYZER_BURST_LIMIT=15000
-LOG_ANALYZER_WORKER_COUNT=4
-```
-
-### Kubernetes Deployment
-
-Deploy using Kubernetes manifests:
+Edit `gateway/config-local.yaml`:
 
 ```yaml
-# log-analyzer-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: log-analyzer
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: log-analyzer
-  template:
-    metadata:
-      labels:
-        app: log-analyzer
-    spec:
-      containers:
-      - name: log-analyzer
-        image: log-analyzer:latest
-        ports:
-        - containerPort: 8080
-        env:
-        - name: LOG_ANALYZER_LOKI_URL
-          value: "http://loki:3100"
-        - name: LOG_ANALYZER_REDIS_URL
-          value: "redis://redis:6379"
-        - name: LOG_ANALYZER_KAFKA_BROKERS
-          value: "kafka:9092"
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
-            cpu: "500m"
+# Adjust ports
+server:
+  http:
+    port: "8001"  # Change if needed
+
+# Configure services
+miner:
+  addr: "localhost:50051"
+sampler:
+  addr: "localhost:50060"
+indexfeed:
+  addr: "localhost:50070"
+
+# Loki for processed logs
+loki:
+  addr: "http://localhost:3100"
+  labels:
+    static:
+      gateway: "true"
+      type: "processed"
+
+# Loki for raw logs
+loki_raw:
+  addr: "http://localhost:3101"
+  labels:
+    static:
+      gateway: "true"
+      type: "raw"
 ```
 
-## Verification
+### Miner Configuration
 
-### 1. Check System Health
+Edit `miner/drain3.ini`:
 
-Verify that all components are running:
+```ini
+[DRAIN]
+sim_th = 0.4         # Lower = more clusters, Higher = fewer clusters
+depth = 4            # Tree depth
+max_clusters = 1000  # Maximum templates
 
-```bash
-# Check Log Analyzer health
-curl http://log-analyzer:8080/health
-
-# Check template mining
-curl http://log-analyzer:8080/api/v1/templates/stats
-
-# Check sampling metrics
-curl http://log-analyzer:8080/api/v1/sampling/metrics
+[MASKING]
+# Adjust masking patterns as needed
 ```
 
-### 2. Test Log Processing
+### Sampler Configuration
 
-Send test logs and verify processing:
+Edit enforcement rules in `gateway/config-local.yaml`:
 
-```bash
-# Send test log
-echo '2024-01-15T10:30:00Z INFO User 12345 logged in from 192.168.1.100' | \
-  curl -X POST -H "Content-Type: text/plain" \
-  --data-binary @- http://log-analyzer:8080/api/v1/logs
-
-# Check if template was created
-curl http://log-analyzer:8080/api/v1/templates | jq '.templates[] | select(.template_text | contains("User"))'
+```yaml
+enforcement:
+  debug: true   # Enforce sampling on DEBUG (reduce volume)
+  info: false   # Keep all INFO logs
+  warn: false   # Keep all WARN logs
+  error: false  # Always keep ERROR logs (never sampled)
+  by_namespace:
+    staging: true      # Enforce in staging namespace
+    production: false  # Don't enforce in production
 ```
 
-### 3. Test Semantic Search
+## Testing the Pipeline
 
-Verify semantic search functionality:
+### 1. Send Multiple Logs
+
+Create a test script:
 
 ```bash
-# Search for authentication-related templates
-curl -X POST http://log-analyzer:8080/api/v1/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "authentication failures",
-    "filters": {
-      "service": ["auth-service"]
-    },
-    "limit": 10
-  }'
+#!/bin/bash
+# test-logs.sh
+
+for i in {1..100}; do
+  curl -X POST http://localhost:8001/api/v1/logs \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"records\": [{
+        \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"labels\": {
+          \"service\": \"test-app\",
+          \"env\": \"dev\",
+          \"severity\": \"info\"
+        },
+        \"payload\": \"User $i logged in successfully\"
+      }]
+    }" &
+done
+
+wait
+echo "Sent 100 logs"
+```
+
+### 2. Verify Processing
+
+**Check Gateway Logs:**
+```bash
+# In Gateway terminal, you should see:
+# - "Enqueueing entries to Loki sink"
+# - "Miner processing..."
+# - "Sampler decision..."
+# - "Successfully sent batch to Loki"
+```
+
+**Check Metrics:**
+```bash
+curl http://localhost:8001/metrics | grep gateway_ingest
+```
+
+**Check Grafana:**
+- Go to Loki (Processed) datasource
+- Query: `{type="processed", service="test-app"}`
+- You should see sampled logs with template_id annotations
+
+- Go to Loki (Raw) datasource  
+- Query: `{type="raw", service="test-app"}`
+- You should see all 100 original logs
+
+### 3. Verify Template Discovery
+
+**Check Redis:**
+```bash
+docker exec -it redis-server redis-cli
+
+# List templates
+KEYS template:*
+
+# Get a template
+GET template:abc123...
+```
+
+**Check Miner Logs:**
+```bash
+# In Miner terminal, you should see:
+# - "New template discovered"
+# - "Template ID: abc123..."
+```
+
+## Common Configurations
+
+### High-Volume Production
+
+```yaml
+# gateway/config.yaml
+server:
+  http:
+    bounds:
+      max_batch: 5000  # Increase for higher throughput
+
+loki:
+  max_batch_entries: 10000
+  flush_interval: "200ms"  # Faster flushing
+
+miner:
+  max_batch: 2000
+  timeout: "1s"
+
+sampler:
+  max_batch: 5000
+```
+
+### Development/Testing
+
+```yaml
+# gateway/config-local.yaml
+loki:
+  mock_mode: true  # Print to stdout instead of Loki
+
+miner:
+  shadow_only: true  # Don't actually drop logs
+
+enforcement:
+  debug: false  # Keep all logs for testing
+```
+
+## Troubleshooting
+
+### Services Won't Start
+
+**Check ports are free:**
+```bash
+lsof -i :8001  # Gateway
+lsof -i :50051 # Miner
+lsof -i :50060 # Sampler
+lsof -i :50070 # IndexFeed
+```
+
+**Check infrastructure:**
+```bash
+docker-compose ps
+# All should show "Up (healthy)"
+```
+
+### Logs Not Appearing
+
+**Check Gateway is receiving:**
+```bash
+curl http://localhost:8001/metrics | grep ingest_requests_total
+```
+
+**Check Loki connectivity:**
+```bash
+# Test processed Loki
+curl http://localhost:3100/ready
+
+# Test raw Loki
+curl http://localhost:3101/ready
+```
+
+**Check sampling decisions:**
+```bash
+curl http://localhost:8001/metrics | grep sampler_decisions_total
+```
+
+### High Memory Usage
+
+**Reduce buffer sizes:**
+```yaml
+loki:
+  max_buffer_bytes: 134217728  # 128MB (half of default)
+  max_buffer_entries: 500000
+```
+
+**Enable faster flushing:**
+```yaml
+loki:
+  flush_interval: "200ms"  # Down from 400ms
 ```
 
 ## Next Steps
 
-Now that you have Log Analyzer running:
-
-1. **Configure Monitoring**: Set up alerts and dashboards
-2. **Tune Sampling**: Adjust policies based on your log patterns
-3. **Integrate APIs**: Connect your applications to the search API
-4. **Scale**: Add more instances as your log volume grows
-
-## Troubleshooting
-
-If you encounter issues:
-
-1. **Check Logs**: Review Log Analyzer container logs
-2. **Verify Connectivity**: Ensure all services can communicate
-3. **Check Resources**: Monitor CPU and memory usage
-4. **Review Configuration**: Validate YAML syntax and settings
-
-For detailed troubleshooting, see the [Troubleshooting Guide](/docs/implement/troubleshooting/).
+- [User Guide](user-guide/) - Detailed usage instructions
+- [System Architecture](../learn/architecture/) - Understanding the system
+- [Gateway Service](../reference/gateway-service/) - Gateway documentation
+- [Component Services](../reference/component-services/) - Other services
+- [Troubleshooting](troubleshooting/) - Common issues and solutions
 
 ## Support
 
-- **Documentation**: Check the [User Guide](/docs/implement/user-guide/) for detailed usage
-- **API Reference**: See the [API Reference](/docs/reference/api-reference/) for technical details
-- **Issues**: Report problems on [GitHub Issues]({{ site.repo }}/issues)
+- [GitHub Issues](https://github.com/kumarabd/ingestion-plane/issues)
+- [Documentation](../learn/overview/)
+- [API Reference](../reference/api-reference/)

@@ -14,13 +14,13 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: Log Analyzer
+title: Ingestion Plane
 email: your-email@domain.com
-author: Log Analyzer Team
+author: Ingestion Plane Team
 description: > # this means to ignore newlines until "baseurl:"
-  Comprehensive technical documentation for the Log Analyzer system. 
-  Learn how to configure, deploy, and use the log analysis platform
-  for monitoring and troubleshooting your applications.
+  Comprehensive technical documentation for the Ingestion Plane system. 
+  Learn how to configure, deploy, and use the intelligent log processing platform
+  with dual Loki storage, template mining, and semantic search.
 
 # DO NOT CHANGE THE LINE OF THIS FILE without editing .circleci/circle_urls.sh
 baseurl: "" # the subpath of your site, e.g. /blog
@@ -29,9 +29,9 @@ baseurl: "" # the subpath of your site, e.g. /blog
 url: "https://abishekmini.github.io" # the base hostname & protocol for your site
 
 # Social (First three Required)
-repo: "https://github.com/your-org/log-analyzer"
-github_user: "your-org"
-github_repo: "log-analyzer"
+repo: "https://github.com/kumarabd/ingestion-plane"
+github_user: "kumarabd"
+github_repo: "ingestion-plane"
 
 # Social media settings - update as needed
 # twitter: your-twitter-handle

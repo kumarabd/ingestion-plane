@@ -6,6 +6,8 @@ permalink: /docs/reference/component-specs/
 
 # Component Specifications
 
+Detailed specifications for the core processing components within the Gateway service.
+
 ## Parser & Masker (Normalization)
 
 ### Responsibilities
@@ -61,7 +63,11 @@ Variable fields are replaced with standardized placeholders:
 - Fall back to plaintext processing
 - Log parsing errors for monitoring
 
-## Template Miner (Drain-lite)
+## Template Miner (Drain3)
+
+**Note:** The Miner is a separate Python service. See [Component Services](component-services/#miner-service-python) for full service documentation.
+
+## Template Mining Specifications (Drain3 Algorithm)
 
 ### Responsibilities
 
@@ -127,6 +133,10 @@ The Template Miner performs online clustering of log patterns to discover and ma
 - **support_counts**: Frequency data per rolling windows (10m/1h/24h)
 
 ## Sampler Decision Engine
+
+**Note:** The Sampler is a separate Go service. See [Component Services](component-services/#sampler-service-go) for full service documentation.
+
+## Sampling Decision Specifications
 
 ### Responsibilities
 
@@ -240,6 +250,10 @@ For kept lines, include:
 
 ## Index-Feed
 
+**Note:** IndexFeed is a separate Go service. See [Component Services](component-services/#indexfeed-service-go) for full service documentation.
+
+## Index-Feed Specifications
+
 ### Responsibilities
 
 The Index-Feed component delivers template-level updates to the semantic indexing plane.
@@ -296,6 +310,10 @@ The Index-Feed component delivers template-level updates to the semantic indexin
 - **Dead letter queue** for failed deliveries
 
 ## Semantic Indexer & Search Plane
+
+**Note:** See [Component Services](component-services/) for IndexFeed and Planner service documentation.
+
+## Search Plane Specifications
 
 ### Responsibilities
 
