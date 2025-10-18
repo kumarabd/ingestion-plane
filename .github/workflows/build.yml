@@ -24,7 +24,7 @@ jobs:
       - name: Build and push gateway image
         uses: docker/build-push-action@v3
         with:
-          context: ./
+          context: ./gateway
           file: ./gateway/Dockerfile
           tags: ghcr.io/kumarabd/ingestion-plane/gateway:latest
           push: true
@@ -46,7 +46,7 @@ jobs:
       - name: Build and push indexfeed image
         uses: docker/build-push-action@v3
         with:
-          context: ./
+          context: ./indexfeed
           file: ./indexfeed/Dockerfile
           tags: ghcr.io/kumarabd/ingestion-plane/indexfeed:latest
           push: true
@@ -68,7 +68,7 @@ jobs:
       - name: Build and push miner image
         uses: docker/build-push-action@v3
         with:
-          context: ./
+          context: ./miner
           file: ./miner/Dockerfile
           tags: ghcr.io/kumarabd/ingestion-plane/miner:latest
           push: true
@@ -90,7 +90,7 @@ jobs:
       - name: Build and push planner image
         uses: docker/build-push-action@v3
         with:
-          context: ./
+          context: ./planner
           file: ./planner/Dockerfile
           tags: ghcr.io/kumarabd/ingestion-plane/planner:latest
           push: true
@@ -112,7 +112,7 @@ jobs:
       - name: Build and push sampler image
         uses: docker/build-push-action@v3
         with:
-          context: ./
+          context: ./sampler
           file: ./sampler/Dockerfile
           tags: ghcr.io/kumarabd/ingestion-plane/sampler:latest
           push: true

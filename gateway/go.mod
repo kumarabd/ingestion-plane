@@ -2,14 +2,12 @@ module github.com/kumarabd/ingestion-plane/gateway
 
 go 1.25.0
 
-replace github.com/kumarabd/ingestion-plane/contracts => ../contracts
-
 require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/grafana/loki v1.6.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/kumarabd/gokit v0.2.3
-	github.com/kumarabd/ingestion-plane/contracts v0.0.0-00010101000000-000000000000
+	github.com/kumarabd/ingestion-plane/contracts v0.0.0-20250923073657-ca96c6017dda
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/prometheus/client_golang v1.20.5
 	go.opentelemetry.io/collector/pdata v1.41.0
