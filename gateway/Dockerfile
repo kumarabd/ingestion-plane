@@ -1,9 +1,11 @@
 ARG app_name
 ARG app_version
 ARG admin_token
+ARG GO_VERSION=1.25
 
-FROM golang:1.21 as build-env
+FROM golang:${GO_VERSION} as build-env
 WORKDIR /github.com/kumarabd/ingestion-plane/gateway
+COPY ../contracts/ contracts/
 COPY go.mod go.sum ./
 RUN go mod download
 

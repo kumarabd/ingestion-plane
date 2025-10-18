@@ -1,0 +1,153 @@
+# Docker Compose for Ingestion Plane Services
+# This file adds the application services to the infrastructure defined in docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose-services.yml up
+
+version: '3.8'
+
+services:
+  # Gateway Service (Go)
+  gateway:
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile
+      args:
+        app_name: gateway
+        app_version: v1.0.0
+    container_name: gateway-server
+    ports:
+      - "8001:8001"
+    environment:
+      - MINER_ADDR=miner:50051
+      - SAMPLER_ADDR=sampler:50060
+      - INDEXFEED_ADDR=indexfeed:50070
+      - REDIS_URL=redis://redis:6379
+      - LOKI_ADDR=http://loki:3100
+      - LOKI_RAW_ADDR=http://loki-raw:3100
+    volumes:
+      - ../gateway/config.yaml:/app/config.yaml:ro
+    depends_on:
+      - redis
+      - loki
+      - loki-raw
+      - miner
+      - sampler
+      - indexfeed
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8001/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ingestion-plane
+
+  # Miner Service (Python/Drain3)
+  miner:
+    build:
+      context: ../miner
+      dockerfile: Dockerfile
+    container_name: miner-server
+    ports:
+      - "50051:50051"
+    environment:
+      - MINER_REDIS_URL=redis://redis:6379/0
+      - DRAIN_SIM_THRESHOLD=0.4
+      - DRAIN_MAX_DEPTH=4
+      - GRPC_PORT=50051
+    volumes:
+      - ../miner/drain3.ini:/app/drain3.ini:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import grpc; channel = grpc.insecure_channel(\"localhost:50051\"); channel.close()' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ingestion-plane
+
+  # Sampler Service (Go)
+  sampler:
+    build:
+      context: ../sampler
+      dockerfile: Dockerfile
+    container_name: sampler-server
+    ports:
+      - "50060:50060"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - GRPC_PORT=50060
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/sampler", "-health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ingestion-plane
+
+  # IndexFeed Service (Go)
+  indexfeed:
+    build:
+      context: ../indexfeed
+      dockerfile: Dockerfile
+    container_name: indexfeed-server
+    ports:
+      - "50070:50070"
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/ingestion_plane
+      - GRPC_PORT=50070
+    depends_on:
+      - postgres
+      - qdrant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/indexfeed", "-health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ingestion-plane
+
+  # Planner Service (Go)
+  planner:
+    build:
+      context: ../planner
+      dockerfile: Dockerfile
+    container_name: planner-server
+    ports:
+      - "50080:50080"
+    environment:
+      - INDEXFEED_ADDR=indexfeed:50070
+      - LOKI_URL=http://loki:3100
+      - POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/ingestion_plane
+      - QDRANT_URL=http://qdrant:6333
+      - GRPC_PORT=50080
+    depends_on:
+      - indexfeed
+      - loki
+      - postgres
+      - qdrant
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/planner", "-health-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - ingestion-plane
+
+networks:
+  ingestion-plane:
+    driver: bridge
+
+
