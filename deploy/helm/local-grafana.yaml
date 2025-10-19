@@ -1,0 +1,113 @@
+# Grafana Helm Chart Override
+# For local/development deployment
+
+# Admin credentials
+adminUser: admin
+adminPassword: admin
+
+# Persistence
+persistence:
+  enabled: true
+  type: pvc
+  size: 5Gi
+  storageClassName: ""
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+
+# Resources
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Security settings
+securityContext:
+  runAsUser: 472
+  runAsGroup: 472
+  fsGroup: 472
+
+# Allow anonymous access for easy local testing
+grafana.ini:
+  server:
+    root_url: "http://localhost:3000"
+  
+  users:
+    allow_sign_up: false
+  
+  auth.anonymous:
+    enabled: true
+    org_role: Viewer
+
+# Datasources - configured for both Loki instances
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      # Loki - Processed Logs (direct access, no gateway)
+      - name: Loki (Processed)
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        isDefault: true
+        jsonData:
+          maxLines: 1000
+        editable: true
+      
+      # Loki Raw - Raw Logs (direct access, no gateway)
+      - name: Loki (Raw)
+        type: loki
+        access: proxy
+        url: http://loki-raw:3100
+        isDefault: false
+        jsonData:
+          maxLines: 1000
+        editable: true
+
+# Disable enterprise/cloud features
+enterprise:
+  enabled: false
+
+# Disable RBAC for simple local setup (enable in production)
+rbac:
+  create: true
+  pspEnabled: false
+
+# Service account
+serviceAccount:
+  create: true
+  name: grafana-sa
+  annotations: {}
+
+# Plugins to install
+plugins: []
+
+# Dashboards
+dashboardProviders: {}
+dashboards: {}
+
+# Ingress disabled for local
+ingress:
+  enabled: false
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 60
+  timeoutSeconds: 30
+  failureThreshold: 10
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 30
+  timeoutSeconds: 30
+

@@ -25,15 +25,34 @@ This Helm chart deploys the complete Ingestion Plane stack including:
 
 ### Add Required Helm Repositories
 
-First, add the Bitnami and Qdrant Helm repositories:
+First, add the required Helm repositories:
 
 ```bash
+# For core dependencies
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo add qdrant https://qdrant.github.io/qdrant-helm
+
+# For observability stack (optional)
+helm repo add grafana https://grafana.github.io/helm-charts
+
 helm repo update
 ```
 
 **Note**: The Redis chart is pulled from CloudPirates OCI registry (`oci://registry-1.docker.io/cloudpirates`) and doesn't require a separate repository addition.
+
+### Install Observability Stack (Optional)
+
+Before installing the main application, you may want to install the observability stack (Loki & Grafana):
+
+```bash
+# Quick install using the provided script
+cd deploy/helm
+./install-observability.sh
+
+# Or see QUICK_INSTALL.md for manual steps
+```
+
+See [OBSERVABILITY_INSTALL.md](./OBSERVABILITY_INSTALL.md) for detailed documentation.
 
 ### Install Dependencies
 
