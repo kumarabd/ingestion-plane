@@ -68,31 +68,56 @@ func main() {
 	}
 
 	// Create and start health server
+	log.Printf("DEBUG: Creating health server on port 8080...")
 	healthSrv := server.NewHealthServer("8080")
+
+	// Channel to receive health server startup errors
+	healthErrCh := make(chan error, 1)
+
+	// Start health server
 	go func() {
-		if err := healthSrv.Start(); err != nil && err != http.ErrServerClosed {
-			log.Printf("WARN: Health server failed: %v", err)
+		log.Printf("INFO: Starting health server on :8080...")
+		err := healthSrv.Start()
+		if err != nil && err != http.ErrServerClosed {
+			log.Printf("ERROR: Health server failed: %v", err)
+			healthErrCh <- err
 		}
 	}()
 
+	// Wait a moment and check if health server started successfully
+	time.Sleep(200 * time.Millisecond)
+	select {
+	case err := <-healthErrCh:
+		log.Fatalf("FATAL: Health server failed to start: %v", err)
+	default:
+		log.Printf("INFO: Health server started successfully on :8080")
+	}
+
 	// Start gRPC server
 	go func() {
+		log.Printf("INFO: Starting gRPC server on :%s...", cfg.Server.GRPCPort)
 		if err := srv.Start(); err != nil {
+			log.Printf("ERROR: gRPC server failed: %v", err)
 			log.Fatalf("gRPC server failed: %v", err)
 		}
 	}()
 
 	// Mark as ready after successful initialization
+	log.Printf("DEBUG: Marking service as ready...")
 	healthSrv.SetReady(true)
-	log.Printf("INFO: Service is ready")
+	log.Printf("INFO: Service is ready - health endpoints: http://:8080/healthz, http://:8080/readyz")
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+	sig := <-sigChan
 
-	log.Printf("INFO: Shutting down server...")
+	log.Printf("INFO: Received signal: %v - initiating graceful shutdown...", sig)
+	log.Printf("DEBUG: Setting ready state to false...")
 	healthSrv.SetReady(false)
+
+	log.Printf("DEBUG: Stopping gRPC server...")
 	srv.Stop()
+
 	log.Printf("INFO: Server stopped successfully")
 }

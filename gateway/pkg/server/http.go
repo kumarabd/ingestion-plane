@@ -159,29 +159,33 @@ func NewHTTP(config *HTTPConfig, minerConfig *miner.Config, samplerConfig *sampl
 // Start starts the HTTP server and raw worker
 func (s *HTTP) Start() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.isRunning {
+		s.mu.Unlock()
 		return fmt.Errorf("HTTP server is already running")
 	}
 
 	// Initialize miner components
 	if err := s.initMiner(); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("failed to initialize miner: %w", err)
 	}
 
 	// Initialize sampler components
 	if err := s.initSampler(); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("failed to initialize sampler: %w", err)
 	}
 
 	// Initialize Loki sink
 	if err := s.initLoki(); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("failed to initialize Loki sink: %w", err)
 	}
 
 	// Initialize Index-Feed producer
 	if err := s.initIndexFeed(); err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("failed to initialize Index-Feed producer: %w", err)
 	}
 
@@ -209,6 +213,9 @@ func (s *HTTP) Start() error {
 
 	s.isRunning = true
 	s.log.Info().Msgf("Starting HTTP server on %s", addr)
+
+	// Release the lock before blocking on ListenAndServe
+	s.mu.Unlock()
 
 	return s.server.ListenAndServe()
 }

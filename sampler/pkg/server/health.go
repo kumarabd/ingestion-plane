@@ -46,15 +46,18 @@ func (hs *HealthServer) SetReady(ready bool) {
 	hs.mu.Lock()
 	hs.ready = ready
 	hs.mu.Unlock()
+	log.Printf("INFO: Service ready state changed to: %t", ready)
 }
 
 // handleHealth handles /healthz endpoint
 func (hs *HealthServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	log.Printf("DEBUG: Health check request received from %s", r.RemoteAddr)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
 		"time":   time.Now().UTC(),
 	})
+	log.Printf("DEBUG: Health check response: OK")
 }
 
 // handleReady handles /readyz endpoint
@@ -63,6 +66,8 @@ func (hs *HealthServer) handleReady(w http.ResponseWriter, r *http.Request) {
 	ready := hs.ready
 	hs.mu.RUnlock()
 
+	log.Printf("DEBUG: Readiness check request received from %s (ready=%t)", r.RemoteAddr, ready)
+
 	w.Header().Set("Content-Type", "application/json")
 	if !ready {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -70,6 +75,7 @@ func (hs *HealthServer) handleReady(w http.ResponseWriter, r *http.Request) {
 			"status": "not ready",
 			"time":   time.Now().UTC(),
 		})
+		log.Printf("DEBUG: Readiness check response: NOT READY (503)")
 		return
 	}
 
@@ -77,4 +83,5 @@ func (hs *HealthServer) handleReady(w http.ResponseWriter, r *http.Request) {
 		"status": "ready",
 		"time":   time.Now().UTC(),
 	})
+	log.Printf("DEBUG: Readiness check response: READY (200)")
 }

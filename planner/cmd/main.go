@@ -75,8 +75,8 @@ func main() {
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+	sig := <-sigChan
 
-	log.Printf("INFO: Shutting down server...")
+	log.Printf("INFO: Received signal: %v - initiating graceful shutdown...", sig)
 	log.Printf("INFO: Server stopped successfully")
 }
