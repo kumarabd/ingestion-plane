@@ -72,7 +72,6 @@ wheels/
 MANIFEST
 
 # Poetry
-poetry.lock
 .venv/
 venv/
 env/
