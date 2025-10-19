@@ -307,6 +307,7 @@ func (s *HTTP) setupRoutes() {
 
 	// Health and metrics endpoints
 	s.handler.GET("/healthz", s.healthHandler)
+	s.handler.GET("/readyz", s.readyHandler)
 	s.handler.GET("/metrics", s.metricsHandler)
 }
 
@@ -329,6 +330,26 @@ func getBodyReader(r *http.Request) (io.ReadCloser, error) {
 func (s *HTTP) healthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok",
+		"time":   time.Now().UTC(),
+	})
+}
+
+// readyHandler handles readiness check endpoint
+func (s *HTTP) readyHandler(c *gin.Context) {
+	s.mu.RLock()
+	ready := s.isRunning
+	s.mu.RUnlock()
+
+	if !ready {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "not ready",
+			"time":   time.Now().UTC(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ready",
 		"time":   time.Now().UTC(),
 	})
 }

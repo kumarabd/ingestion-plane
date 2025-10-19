@@ -38,6 +38,8 @@ func New(cfg *Config, vectorDim int, db *database.Client, vectorCli *vector.Clie
 func (s *Service) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/search", s.HandleSearch)
 	mux.HandleFunc("/v1/plan", s.HandlePlan)
+	mux.HandleFunc("/healthz", s.HandleHealth)
+	mux.HandleFunc("/readyz", s.HandleReady)
 }
 
 // HandleSearch handles the /v1/search endpoint
@@ -231,4 +233,20 @@ func escapeForLogQL(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	return s
+}
+
+// HandleHealth handles /healthz endpoint
+func (s *Service) HandleHealth(w http.ResponseWriter, r *http.Request) {
+	server.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ok",
+		"time":   time.Now().UTC(),
+	})
+}
+
+// HandleReady handles /readyz endpoint
+func (s *Service) HandleReady(w http.ResponseWriter, r *http.Request) {
+	server.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "ready",
+		"time":   time.Now().UTC(),
+	})
 }

@@ -29,6 +29,9 @@ spec:
           {{- toYaml .Values.securityContext | nindent 10 }}
         image: "{{ .Values.planner.image.repository }}:{{ .Values.planner.image.tag }}"
         imagePullPolicy: {{ .Values.planner.image.pullPolicy }}
+        args:
+        - "--config"
+        - "/app/config.yaml"
         ports:
         - name: http
           containerPort: {{ .Values.planner.service.httpPort }}
@@ -40,7 +43,7 @@ spec:
           readOnly: true
         livenessProbe:
           httpGet:
-            path: /v1/search
+            path: /healthz
             port: http
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -48,7 +51,7 @@ spec:
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /v1/search
+            path: /readyz
             port: http
           initialDelaySeconds: 10
           periodSeconds: 5

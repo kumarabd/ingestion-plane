@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -62,12 +63,24 @@ func main() {
 		log.Fatalf("failed to create server: %v", err)
 	}
 
-	// Handle graceful shutdown
+	// Create and start health server
+	healthSrv := server.NewHealthServer("8080")
 	go func() {
-		if err := srv.Start(); err != nil {
-			log.Fatalf("server failed: %v", err)
+		if err := healthSrv.Start(); err != nil && err != http.ErrServerClosed {
+			log.Printf("WARN: Health server failed: %v", err)
 		}
 	}()
+
+	// Start gRPC server
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Fatalf("gRPC server failed: %v", err)
+		}
+	}()
+
+	// Mark as ready after successful initialization
+	healthSrv.SetReady(true)
+	log.Printf("INFO: Service is ready")
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
@@ -75,6 +88,7 @@ func main() {
 	<-sigChan
 
 	log.Printf("INFO: Shutting down server...")
+	healthSrv.SetReady(false)
 	srv.Stop()
 	store.Close()
 	log.Printf("INFO: Server stopped successfully")

@@ -29,9 +29,15 @@ spec:
           {{- toYaml .Values.securityContext | nindent 10 }}
         image: "{{ .Values.sampler.image.repository }}:{{ .Values.sampler.image.tag }}"
         imagePullPolicy: {{ .Values.sampler.image.pullPolicy }}
+        args:
+        - "--config"
+        - "/app/config.yaml"
         ports:
         - name: grpc
           containerPort: {{ .Values.sampler.service.grpcPort }}
+          protocol: TCP
+        - name: http-health
+          containerPort: 8080
           protocol: TCP
         volumeMounts:
         - name: config
@@ -39,15 +45,17 @@ spec:
           subPath: config.yaml
           readOnly: true
         livenessProbe:
-          tcpSocket:
-            port: grpc
+          httpGet:
+            path: /healthz
+            port: http-health
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
-          tcpSocket:
-            port: grpc
+          httpGet:
+            path: /readyz
+            port: http-health
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3
