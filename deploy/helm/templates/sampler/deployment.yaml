@@ -14,6 +14,8 @@ spec:
       {{- include "ingestion-plane.sampler.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/sampler/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "ingestion-plane.sampler.selectorLabels" . | nindent 8 }}
     spec:
@@ -31,11 +33,11 @@ spec:
         - name: grpc
           containerPort: {{ .Values.sampler.service.grpcPort }}
           protocol: TCP
-        env:
-        - name: REDIS_URL
-          value: "redis://{{ include "ingestion-plane.redis.host" . }}:6379"
-        - name: GRPC_PORT
-          value: {{ .Values.sampler.service.grpcPort | quote }}
+        volumeMounts:
+        - name: config
+          mountPath: /app/config.yaml
+          subPath: config.yaml
+          readOnly: true
         livenessProbe:
           tcpSocket:
             port: grpc
@@ -52,6 +54,10 @@ spec:
           failureThreshold: 3
         resources:
           {{- toYaml .Values.sampler.resources | nindent 10 }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "ingestion-plane.fullname" . }}-sampler-config
       {{- with .Values.sampler.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

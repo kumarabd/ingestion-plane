@@ -1,0 +1,32 @@
+{{- if .Values.sampler.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-sampler-config
+  labels:
+    {{- include "ingestion-plane.sampler.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # Sampler Configuration
+    server:
+      grpc_port: {{ .Values.sampler.service.grpcPort | quote }}
+    
+    redis:
+      addr: "{{ include "ingestion-plane.redis.host" . }}:6379"
+      password: ""
+      db: 0
+    
+    policy:
+      ema_halflife_mins: {{ .Values.sampler.config.emaHalfLifeMins }}
+      min_spike_per_min: {{ .Values.sampler.config.minSpikePerMin }}
+      spike_factor: {{ .Values.sampler.config.spikeFactor }}
+      warmup_n: {{ .Values.sampler.config.warmupN }}
+      log2_enabled: {{ .Values.sampler.config.log2Enabled }}
+      novelty_window_min: {{ .Values.sampler.config.noveltyWindowMin }}
+      version: {{ .Values.sampler.config.version | quote }}
+      steady_k_debug: {{ .Values.sampler.config.steadyKDebug }}
+      steady_k_info: {{ .Values.sampler.config.steadyKInfo }}
+      steady_k_warn: {{ .Values.sampler.config.steadyKWarn }}
+      budget_10m_default: {{ .Values.sampler.config.budget10mDefault }}
+{{- end }}
+

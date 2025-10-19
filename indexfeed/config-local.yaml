@@ -1,0 +1,41 @@
+# IndexFeed Local Configuration
+# This configuration is for local development and testing
+
+# Server configuration
+server:
+  grpc_port: "50070"  # gRPC port for IndexFeed service
+
+# Database configuration (PostgreSQL)
+# For local development, connect to localhost
+database:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  database: "ingestion_plane"
+  ssl_mode: "disable"
+
+# Vector database configuration (Qdrant + Embedding)
+# For local development, connect to localhost
+vector:
+  host: "localhost"
+  port: 6334  # gRPC port (6333 is HTTP, 6334 is gRPC)
+  collection: "templates"
+  vector_dim: 384  # Embedding dimension (384 for smaller models, 768 for larger)
+
+# Service configuration
+service:
+  # Label allowlist - only these labels will be stored and indexed
+  # Add more labels as needed for your use case
+  label_allowlist:
+    - service
+    - env
+    - severity
+    - namespace
+    - cluster
+    - pod
+    - container
+    - team
+    - region
+    - zone
+

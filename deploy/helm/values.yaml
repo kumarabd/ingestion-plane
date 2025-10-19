@@ -4,9 +4,11 @@
 
 # Global settings
 global:
-  imageRegistry: ghcr.io
+  imageRegistry: ""
   imagePullSecrets: []
   storageClass: ""
+  security:
+    allowInsecureImages: true
 
 # Gateway Service (Go)
 gateway:
@@ -140,6 +142,20 @@ sampler:
     maxReplicas: 5
     targetCPUUtilizationPercentage: 80
   
+  # Sampler Configuration
+  config:
+    emaHalfLifeMins: 10.0
+    minSpikePerMin: 100
+    spikeFactor: 3.0
+    warmupN: 32
+    log2Enabled: true
+    noveltyWindowMin: 1440
+    version: "sampler-redis-v1"
+    steadyKDebug: 500
+    steadyKInfo: 100
+    steadyKWarn: 10
+    budget10mDefault: 0
+  
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -173,6 +189,16 @@ indexfeed:
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
   
+  # IndexFeed Configuration
+  config:
+    qdrantCollection: "templates"
+    vectorDim: 384
+    labelAllowlist:
+      - service
+      - env
+      - severity
+      - namespace
+  
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -189,7 +215,7 @@ planner:
   
   service:
     type: ClusterIP
-    grpcPort: 50080
+    httpPort: 8080
     annotations: {}
   
   resources:
@@ -205,6 +231,13 @@ planner:
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
+  
+  # Planner Configuration
+  config:
+    tenant: "default"
+    defaultTopK: 10
+    maxTemplatesInPlan: 8
+    vectorDim: 384
   
   nodeSelector: {}
   tolerations: []
@@ -232,26 +265,25 @@ postgresql:
   metrics:
     enabled: false
 
-# Redis (Bitnami) - for caching and state
+# Redis (CloudPirates) - for caching and state
 redis:
   enabled: true
   architecture: standalone
-  auth:
-    enabled: false
-  master:
-    persistence:
-      enabled: true
-      size: 8Gi
-    resources:
-      limits:
-        cpu: 500m
-        memory: 512Mi
-      requests:
-        cpu: 250m
-        memory: 256Mi
-  # Bitnami Redis metrics
-  metrics:
-    enabled: false
+  image:
+    repository: redis
+    tag: "7.2-alpine"
+    pullPolicy: IfNotPresent
+  persistence:
+    enabled: true
+    size: 8Gi
+    accessMode: ReadWriteOnce
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
 
 # Qdrant - for vector storage
 qdrant:

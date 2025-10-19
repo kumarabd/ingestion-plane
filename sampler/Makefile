@@ -14,7 +14,7 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 build: ## Build the binary
-	go build -o $(BINARY_NAME) main.go
+	go build -o $(BINARY_NAME) ./cmd/main.go
 
 run: build ## Run the service locally
 	./$(BINARY_NAME)

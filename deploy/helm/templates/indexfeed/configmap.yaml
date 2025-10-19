@@ -1,0 +1,34 @@
+{{- if .Values.indexfeed.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-indexfeed-config
+  labels:
+    {{- include "ingestion-plane.indexfeed.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # IndexFeed Configuration
+    server:
+      grpc_port: {{ .Values.indexfeed.service.grpcPort | quote }}
+    
+    database:
+      host: {{ include "ingestion-plane.postgresql.host" . | quote }}
+      port: 5432
+      user: {{ .Values.postgresql.auth.username | quote }}
+      password: {{ .Values.postgresql.auth.password | quote }}
+      database: {{ .Values.postgresql.auth.database | quote }}
+      ssl_mode: "disable"
+    
+    vector:
+      host: {{ include "ingestion-plane.qdrant.host" . | quote }}
+      port: 6334
+      collection: {{ .Values.indexfeed.config.qdrantCollection | quote }}
+      vector_dim: {{ .Values.indexfeed.config.vectorDim }}
+    
+    service:
+      label_allowlist:
+        {{- range .Values.indexfeed.config.labelAllowlist }}
+        - {{ . }}
+        {{- end }}
+{{- end }}
+

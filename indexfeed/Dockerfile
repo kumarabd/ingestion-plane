@@ -19,14 +19,16 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
-COPY main.go ./
+COPY cmd/ ./cmd/
+COPY pkg/ ./pkg/
+COPY internal/ ./internal/
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s -X main.Version=v1.0.0 -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -ldflags="-w -s -X github.com/kumarabd/ingestion-plane/indexfeed/internal/config.ApplicationVersion=v1.0.0" \
     -a -installsuffix cgo \
     -o indexfeed \
-    main.go
+    ./cmd/main.go
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian12:nonroot

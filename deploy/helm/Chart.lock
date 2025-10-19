@@ -3,10 +3,10 @@ dependencies:
   repository: https://charts.bitnami.com/bitnami
   version: 18.0.16
 - name: redis
-  repository: https://charts.bitnami.com/bitnami
-  version: 23.1.1
+  repository: oci://registry-1.docker.io/cloudpirates
+  version: 0.9.0
 - name: qdrant
   repository: https://qdrant.github.io/qdrant-helm
   version: 1.15.4
-digest: sha256:9c1f7521ee359dd1466b3abf47d3c1931ab2fce1a07d49da4091fc1919752a84
-generated: "2025-10-18T18:20:06.395959-07:00"
+digest: sha256:3f03d519d2d871307de97c078fe99d1263bba03111451f601eeac72311a5eb4c
+generated: "2025-10-18T18:30:58.239899-07:00"

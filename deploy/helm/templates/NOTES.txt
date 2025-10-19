@@ -51,7 +51,7 @@ The following components have been deployed:
 {{- end }}
 
 {{- if .Values.redis.enabled }}
-✓ Redis (via Bitnami)
+✓ Redis (via CloudPirates)
   - Host: {{ include "ingestion-plane.redis.host" . }}
 {{- end }}
 

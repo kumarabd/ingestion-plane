@@ -12,7 +12,7 @@ This Helm chart deploys the complete Ingestion Plane stack including:
 - **IndexFeed**: Log indexing and feeding service
 - **Planner**: Query planning and optimization service
 - **PostgreSQL**: Metadata and configuration storage (Bitnami)
-- **Redis**: Caching and state management (Bitnami)
+- **Redis**: Caching and state management (CloudPirates)
 - **Qdrant**: Vector database for semantic search
 
 ## Prerequisites
@@ -32,6 +32,8 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo add qdrant https://qdrant.github.io/qdrant-helm
 helm repo update
 ```
+
+**Note**: The Redis chart is pulled from CloudPirates OCI registry (`oci://registry-1.docker.io/cloudpirates`) and doesn't require a separate repository addition.
 
 ### Install Dependencies
 

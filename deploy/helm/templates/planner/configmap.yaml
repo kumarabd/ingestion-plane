@@ -1,0 +1,35 @@
+{{- if .Values.planner.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-planner-config
+  labels:
+    {{- include "ingestion-plane.planner.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # Planner Configuration
+    server:
+      http_addr: ":8080"
+      read_timeout: "5s"
+      write_timeout: "10s"
+    
+    database:
+      host: {{ include "ingestion-plane.postgresql.host" . | quote }}
+      port: 5432
+      user: {{ .Values.postgresql.auth.username | quote }}
+      password: {{ .Values.postgresql.auth.password | quote }}
+      database: {{ .Values.postgresql.auth.database | quote }}
+      ssl_mode: "disable"
+    
+    vector:
+      host: {{ include "ingestion-plane.qdrant.host" . | quote }}
+      port: 6333
+      collection: "templates"
+      vector_dim: {{ .Values.planner.config.vectorDim }}
+    
+    service:
+      tenant: {{ .Values.planner.config.tenant | quote }}
+      default_topk: {{ .Values.planner.config.defaultTopK }}
+      max_templates_in_plan: {{ .Values.planner.config.maxTemplatesInPlan }}
+{{- end }}
+

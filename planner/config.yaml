@@ -1,0 +1,30 @@
+# Planner Configuration
+
+# Server configuration
+server:
+  http_addr: ":8080"
+  read_timeout: "5s"
+  write_timeout: "10s"
+
+# Database configuration (PostgreSQL)
+database:
+  host: "postgres"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  database: "ingestion_plane"
+  ssl_mode: "disable"
+
+# Vector database configuration (Qdrant)
+vector:
+  host: "qdrant"
+  port: 6334
+  collection: "templates"
+  vector_dim: 384
+
+# Service configuration
+service:
+  tenant: "default"
+  default_topk: 10
+  max_templates_in_plan: 8
+

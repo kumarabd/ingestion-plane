@@ -167,7 +167,7 @@ Redis host
 */}}
 {{- define "ingestion-plane.redis.host" -}}
 {{- if .Values.redis.enabled }}
-{{- printf "%s-redis-master" (include "ingestion-plane.fullname" .) }}
+{{- printf "%s-redis" .Release.Name }}
 {{- else }}
 {{- .Values.redis.externalHost }}
 {{- end }}

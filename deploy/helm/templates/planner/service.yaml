@@ -12,10 +12,10 @@ metadata:
 spec:
   type: {{ .Values.planner.service.type }}
   ports:
-  - port: {{ .Values.planner.service.grpcPort }}
-    targetPort: grpc
+  - port: {{ .Values.planner.service.httpPort }}
+    targetPort: http
     protocol: TCP
-    name: grpc
+    name: http
   selector:
     {{- include "ingestion-plane.planner.selectorLabels" . | nindent 4 }}
 {{- end }}

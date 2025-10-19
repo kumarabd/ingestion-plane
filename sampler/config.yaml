@@ -1,0 +1,26 @@
+# Sampler Configuration
+
+# Server configuration
+server:
+  grpc_port: "50060"
+
+# Redis configuration
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+
+# Policy configuration
+policy:
+  ema_halflife_mins: 10.0       # EMA half-life in minutes
+  min_spike_per_min: 100        # Minimum events/min to qualify as spike
+  spike_factor: 3.0             # Factor above EMA to trigger spike
+  warmup_n: 32                  # Initial warmup samples to keep
+  log2_enabled: true            # Keep log2 milestones (1,2,4,8,16,...)
+  novelty_window_min: 1440      # 24h novelty window
+  version: "sampler-redis-v1"   # Policy version
+  steady_k_debug: 500           # Keep every Nth DEBUG log
+  steady_k_info: 100            # Keep every Nth INFO log
+  steady_k_warn: 10             # Keep every Nth WARN log
+  budget_10m_default: 0         # Per-key 10m budget (0=disabled)
+

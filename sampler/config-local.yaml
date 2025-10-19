@@ -1,0 +1,28 @@
+# Sampler Local Configuration
+# This configuration is for local development and testing
+
+# Server configuration
+server:
+  grpc_port: "50060"
+
+# Redis configuration
+# For local development, connect to localhost
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+# Policy configuration
+policy:
+  ema_halflife_mins: 10.0       # EMA half-life in minutes for spike detection
+  min_spike_per_min: 100        # Minimum events/min to qualify as spike
+  spike_factor: 3.0             # Factor above EMA to trigger spike detection
+  warmup_n: 32                  # Initial warmup samples to always keep
+  log2_enabled: true            # Keep log2 milestones (1,2,4,8,16,32,64,...)
+  novelty_window_min: 1440      # 24h novelty window (first occurrence)
+  version: "sampler-redis-v1"   # Policy version identifier
+  steady_k_debug: 500           # Keep every 500th DEBUG log in steady state
+  steady_k_info: 100            # Keep every 100th INFO log in steady state
+  steady_k_warn: 10             # Keep every 10th WARN log in steady state
+  budget_10m_default: 0         # Per-key 10m budget (0=disabled, >0=max events per 10m)
+
