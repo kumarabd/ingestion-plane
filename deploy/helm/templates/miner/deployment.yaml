@@ -1,0 +1,72 @@
+{{- if .Values.miner.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-miner
+  labels:
+    {{- include "ingestion-plane.miner.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.miner.autoscaling.enabled }}
+  replicas: {{ .Values.miner.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ingestion-plane.miner.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ingestion-plane.miner.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "ingestion-plane.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "ingestion-plane.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: miner
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.global.imageRegistry }}/{{ .Values.miner.image.repository }}:{{ .Values.miner.image.tag }}"
+        imagePullPolicy: {{ .Values.miner.image.pullPolicy }}
+        ports:
+        - name: grpc
+          containerPort: {{ .Values.miner.service.grpcPort }}
+          protocol: TCP
+        env:
+        - name: MINER_REDIS_URL
+          value: "redis://{{ include "ingestion-plane.redis.host" . }}:6379/0"
+        - name: DRAIN_SIM_THRESHOLD
+          value: {{ .Values.miner.env.drainSimThreshold | quote }}
+        - name: DRAIN_MAX_DEPTH
+          value: {{ .Values.miner.env.drainMaxDepth | quote }}
+        - name: GRPC_PORT
+          value: {{ .Values.miner.service.grpcPort | quote }}
+        livenessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.miner.resources | nindent 10 }}
+      {{- with .Values.miner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.miner.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.miner.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+

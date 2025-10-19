@@ -1,0 +1,25 @@
+---
+{{- if .Values.miner.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-miner
+  labels:
+    {{- include "ingestion-plane.miner.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "ingestion-plane.fullname" . }}-miner
+  minReplicas: {{ .Values.miner.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.miner.autoscaling.maxReplicas }}
+  metrics:
+  {{- if .Values.miner.autoscaling.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.miner.autoscaling.targetCPUUtilizationPercentage }}
+  {{- end }}
+{{- end }}

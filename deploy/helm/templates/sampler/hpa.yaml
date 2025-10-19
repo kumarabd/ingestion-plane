@@ -1,0 +1,25 @@
+---
+{{- if .Values.sampler.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-sampler
+  labels:
+    {{- include "ingestion-plane.sampler.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "ingestion-plane.fullname" . }}-sampler
+  minReplicas: {{ .Values.sampler.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.sampler.autoscaling.maxReplicas }}
+  metrics:
+  {{- if .Values.sampler.autoscaling.targetCPUUtilizationPercentage }}
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .Values.sampler.autoscaling.targetCPUUtilizationPercentage }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,117 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+===========================================================================
+Ingestion Plane has been deployed successfully!
+===========================================================================
+
+The following components have been deployed:
+
+{{- if .Values.gateway.enabled }}
+✓ Gateway Service (HTTP/gRPC)
+  - HTTP Port: {{ .Values.gateway.service.httpPort }}
+  - gRPC Port: {{ .Values.gateway.service.grpcPort }}
+  - Replicas: {{ .Values.gateway.replicaCount }}
+{{- end }}
+
+{{- if .Values.miner.enabled }}
+✓ Miner Service (Python/Drain3)
+  - gRPC Port: {{ .Values.miner.service.grpcPort }}
+  - Replicas: {{ .Values.miner.replicaCount }}
+{{- end }}
+
+{{- if .Values.sampler.enabled }}
+✓ Sampler Service
+  - gRPC Port: {{ .Values.sampler.service.grpcPort }}
+  - Replicas: {{ .Values.sampler.replicaCount }}
+{{- end }}
+
+{{- if .Values.indexfeed.enabled }}
+✓ IndexFeed Service
+  - gRPC Port: {{ .Values.indexfeed.service.grpcPort }}
+  - Replicas: {{ .Values.indexfeed.replicaCount }}
+{{- end }}
+
+{{- if .Values.planner.enabled }}
+✓ Planner Service
+  - gRPC Port: {{ .Values.planner.service.grpcPort }}
+  - Replicas: {{ .Values.planner.replicaCount }}
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+✓ PostgreSQL (via Bitnami)
+  - Database: {{ .Values.postgresql.auth.database }}
+  - Host: {{ include "ingestion-plane.postgresql.host" . }}
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+✓ Redis (via Bitnami)
+  - Host: {{ include "ingestion-plane.redis.host" . }}
+{{- end }}
+
+{{- if .Values.qdrant.enabled }}
+✓ Qdrant Vector Database
+  - HTTP Port: 6333
+  - gRPC Port: 6334
+  - Host: {{ include "ingestion-plane.qdrant.host" . }}
+{{- end }}
+
+===========================================================================
+
+1. Get the Gateway HTTP endpoint:
+{{- if .Values.ingress.enabled }}
+  export GATEWAY_HOST={{ (index .Values.ingress.hosts 0).host }}
+  echo "Gateway is available at: http://$GATEWAY_HOST"
+{{- else if contains "NodePort" .Values.gateway.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "ingestion-plane.fullname" . }}-gateway)
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo "Gateway is available at: http://$NODE_IP:$NODE_PORT"
+{{- else if contains "LoadBalancer" .Values.gateway.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status by running:
+        
+        kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "ingestion-plane.fullname" . }}-gateway
+        
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "ingestion-plane.fullname" . }}-gateway --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo "Gateway is available at: http://$SERVICE_IP:{{ .Values.gateway.service.httpPort }}"
+{{- else if contains "ClusterIP" .Values.gateway.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/component=gateway,app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Gateway is available at: http://127.0.0.1:8080"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+2. Check the status of all pods:
+  kubectl get pods -n {{ .Release.Namespace }} -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+3. View logs for a specific service (e.g., gateway):
+  kubectl logs -n {{ .Release.Namespace }} -l "app.kubernetes.io/component=gateway" --tail=100 -f
+
+4. Access PostgreSQL:
+  export POSTGRES_PASSWORD=$(kubectl get secret --namespace {{ .Release.Namespace }} {{ include "ingestion-plane.fullname" . }}-postgresql -o jsonpath="{.data.postgres-password}" | base64 -d)
+  kubectl run {{ include "ingestion-plane.fullname" . }}-postgresql-client --rm --tty -i --restart='Never' --namespace {{ .Release.Namespace }} --image docker.io/bitnami/postgresql:15 --env="PGPASSWORD=$POSTGRES_PASSWORD" \
+    --command -- psql --host {{ include "ingestion-plane.postgresql.host" . }} -U {{ .Values.postgresql.auth.username }} -d {{ .Values.postgresql.auth.database }} -p 5432
+
+5. Test the Gateway health endpoint:
+{{- if contains "ClusterIP" .Values.gateway.service.type }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "ingestion-plane.fullname" . }}-gateway 8080:{{ .Values.gateway.service.httpPort }}
+  curl http://localhost:8080/healthz
+{{- else }}
+  # After obtaining the gateway endpoint from step 1
+  curl http://$GATEWAY_HOST/healthz
+{{- end }}
+
+===========================================================================
+
+For more information, visit:
+- Documentation: https://github.com/kumarabd/ingestion-plane
+- Issues: https://github.com/kumarabd/ingestion-plane/issues
+
+Happy logging! 🚀
+

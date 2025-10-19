@@ -1,0 +1,70 @@
+{{- if .Values.indexfeed.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-indexfeed
+  labels:
+    {{- include "ingestion-plane.indexfeed.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.indexfeed.autoscaling.enabled }}
+  replicas: {{ .Values.indexfeed.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ingestion-plane.indexfeed.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ingestion-plane.indexfeed.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "ingestion-plane.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "ingestion-plane.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: indexfeed
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.global.imageRegistry }}/{{ .Values.indexfeed.image.repository }}:{{ .Values.indexfeed.image.tag }}"
+        imagePullPolicy: {{ .Values.indexfeed.image.pullPolicy }}
+        ports:
+        - name: grpc
+          containerPort: {{ .Values.indexfeed.service.grpcPort }}
+          protocol: TCP
+        env:
+        - name: QDRANT_URL
+          value: "http://{{ include "ingestion-plane.qdrant.host" . }}:6333"
+        - name: POSTGRES_URL
+          value: "postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "ingestion-plane.postgresql.host" . }}:5432/{{ .Values.postgresql.auth.database }}"
+        - name: GRPC_PORT
+          value: {{ .Values.indexfeed.service.grpcPort | quote }}
+        livenessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.indexfeed.resources | nindent 10 }}
+      {{- with .Values.indexfeed.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.indexfeed.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.indexfeed.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+

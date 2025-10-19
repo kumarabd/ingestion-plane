@@ -1,0 +1,74 @@
+{{- if .Values.planner.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-planner
+  labels:
+    {{- include "ingestion-plane.planner.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.planner.autoscaling.enabled }}
+  replicas: {{ .Values.planner.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ingestion-plane.planner.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ingestion-plane.planner.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "ingestion-plane.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "ingestion-plane.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: planner
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.global.imageRegistry }}/{{ .Values.planner.image.repository }}:{{ .Values.planner.image.tag }}"
+        imagePullPolicy: {{ .Values.planner.image.pullPolicy }}
+        ports:
+        - name: grpc
+          containerPort: {{ .Values.planner.service.grpcPort }}
+          protocol: TCP
+        env:
+        - name: INDEXFEED_ADDR
+          value: "{{ include "ingestion-plane.fullname" . }}-indexfeed:{{ .Values.indexfeed.service.grpcPort }}"
+        - name: LOKI_URL
+          value: "http://loki:3100"
+        - name: POSTGRES_URL
+          value: "postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "ingestion-plane.postgresql.host" . }}:5432/{{ .Values.postgresql.auth.database }}"
+        - name: QDRANT_URL
+          value: "http://{{ include "ingestion-plane.qdrant.host" . }}:6333"
+        - name: GRPC_PORT
+          value: {{ .Values.planner.service.grpcPort | quote }}
+        livenessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.planner.resources | nindent 10 }}
+      {{- with .Values.planner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.planner.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.planner.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+

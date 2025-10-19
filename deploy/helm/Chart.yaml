@@ -1,0 +1,41 @@
+apiVersion: v2
+name: ingestion-plane
+description: A Helm chart for Ingestion Plane - Log processing and analytics platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - logging
+  - observability
+  - log-processing
+  - analytics
+home: https://github.com/kumarabd/ingestion-plane
+maintainers:
+  - name: Ingestion Plane Team
+    email: team@example.com
+
+dependencies:
+  # PostgreSQL for IndexFeed metadata storage
+  - name: postgresql
+    version: "13.2.24"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+    tags:
+      - database
+
+  # Redis for caching and state management
+  - name: redis
+    version: "18.4.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+    tags:
+      - cache
+
+  # Qdrant for vector storage
+  - name: qdrant
+    version: "0.8.4"
+    repository: https://qdrant.github.io/qdrant-helm
+    condition: qdrant.enabled
+    tags:
+      - vector-db
+

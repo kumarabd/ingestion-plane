@@ -1,0 +1,22 @@
+{{- if .Values.miner.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-miner
+  labels:
+    {{- include "ingestion-plane.miner.labels" . | nindent 4 }}
+  {{- with .Values.miner.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.miner.service.type }}
+  ports:
+  - port: {{ .Values.miner.service.grpcPort }}
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  selector:
+    {{- include "ingestion-plane.miner.selectorLabels" . | nindent 4 }}
+{{- end }}
+

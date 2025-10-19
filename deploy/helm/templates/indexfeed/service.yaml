@@ -1,0 +1,22 @@
+{{- if .Values.indexfeed.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-indexfeed
+  labels:
+    {{- include "ingestion-plane.indexfeed.labels" . | nindent 4 }}
+  {{- with .Values.indexfeed.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.indexfeed.service.type }}
+  ports:
+  - port: {{ .Values.indexfeed.service.grpcPort }}
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  selector:
+    {{- include "ingestion-plane.indexfeed.selectorLabels" . | nindent 4 }}
+{{- end }}
+

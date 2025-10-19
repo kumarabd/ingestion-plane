@@ -1,0 +1,22 @@
+{{- if .Values.sampler.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-sampler
+  labels:
+    {{- include "ingestion-plane.sampler.labels" . | nindent 4 }}
+  {{- with .Values.sampler.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.sampler.service.type }}
+  ports:
+  - port: {{ .Values.sampler.service.grpcPort }}
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  selector:
+    {{- include "ingestion-plane.sampler.selectorLabels" . | nindent 4 }}
+{{- end }}
+

@@ -1,0 +1,63 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-gateway-config
+  labels:
+    {{- include "ingestion-plane.gateway.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # Gateway Configuration
+    server:
+      http:
+        host: {{ .Values.gateway.config.server.http.host | quote }}
+        port: {{ .Values.gateway.config.server.http.port | quote }}
+        read_timeout: {{ .Values.gateway.config.server.http.read_timeout | quote }}
+        write_timeout: {{ .Values.gateway.config.server.http.write_timeout | quote }}
+        idle_timeout: {{ .Values.gateway.config.server.http.idle_timeout | quote }}
+      
+      grpc:
+        host: {{ .Values.gateway.config.server.grpc.host | quote }}
+        port: {{ .Values.gateway.config.server.grpc.port | quote }}
+        max_concurrent_streams: {{ .Values.gateway.config.server.grpc.max_concurrent_streams }}
+
+    otlp:
+      max_log_size: {{ .Values.gateway.config.otlp.max_log_size }}
+      max_message_bytes: {{ .Values.gateway.config.otlp.max_message_bytes }}
+      max_batch_size: {{ .Values.gateway.config.otlp.max_batch_size }}
+      request_timeout: {{ .Values.gateway.config.otlp.request_timeout | quote }}
+
+    emitter:
+      output_type: "stdout"
+      batch_size: 100
+      flush_interval: 5
+
+    miner:
+      addr: "dns:///{{ include "ingestion-plane.fullname" . }}-miner:{{ .Values.miner.service.grpcPort }}"
+      timeout: {{ .Values.gateway.config.miner.timeout | quote }}
+      max_batch: {{ .Values.gateway.config.miner.max_batch }}
+      max_batch_wait: {{ .Values.gateway.config.miner.max_batch_wait | quote }}
+      shadow_only: {{ .Values.gateway.config.miner.shadow_only }}
+
+    sampler:
+      addr: "dns:///{{ include "ingestion-plane.fullname" . }}-sampler:{{ .Values.sampler.service.grpcPort }}"
+      timeout: {{ .Values.gateway.config.sampler.timeout | quote }}
+      max_batch: {{ .Values.gateway.config.sampler.max_batch }}
+      max_batch_wait: {{ .Values.gateway.config.sampler.max_batch_wait | quote }}
+
+    enforcement:
+      debug: true
+      info: false
+      warn: false
+      error: false
+
+    # IndexFeed service configuration
+    indexfeed:
+      addr: "dns:///{{ include "ingestion-plane.fullname" . }}-indexfeed:{{ .Values.indexfeed.service.grpcPort }}"
+      timeout: "200ms"
+      max_retries: 2
+      retry_base_delay: "20ms"
+
+    metrics: {}
+{{- end }}
+

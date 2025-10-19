@@ -1,0 +1,26 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ingestion-plane.fullname" . }}-gateway
+  labels:
+    {{- include "ingestion-plane.gateway.labels" . | nindent 4 }}
+  {{- with .Values.gateway.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.gateway.service.type }}
+  ports:
+  - port: {{ .Values.gateway.service.httpPort }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: {{ .Values.gateway.service.grpcPort }}
+    targetPort: grpc
+    protocol: TCP
+    name: grpc
+  selector:
+    {{- include "ingestion-plane.gateway.selectorLabels" . | nindent 4 }}
+{{- end }}
+

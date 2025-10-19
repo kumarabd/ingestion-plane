@@ -1,5 +1,5 @@
-# Workflow for building and deploying docker images to GitHub Packages
-name: Build and Deploy Docker Images
+# Workflow for building and deploying ARM64 docker images to GitHub Packages
+name: Build and Deploy Docker Images (ARM64)
 
 on:
   push:
@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Packages
@@ -30,7 +32,8 @@ jobs:
         with:
           context: ./gateway
           file: ./gateway/Dockerfile
-          tags: ghcr.io/kumarabd/ingestion-plane/gateway:latest
+          platforms: linux/arm64
+          tags: ghcr.io/kumarabd/ingestion-plane/gateway:arm64
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -39,6 +42,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Packages
@@ -52,7 +57,8 @@ jobs:
         with:
           context: ./indexfeed
           file: ./indexfeed/Dockerfile
-          tags: ghcr.io/kumarabd/ingestion-plane/indexfeed:latest
+          platforms: linux/arm64
+          tags: ghcr.io/kumarabd/ingestion-plane/indexfeed:arm64
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -61,6 +67,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Packages
@@ -74,7 +82,8 @@ jobs:
         with:
           context: ./miner
           file: ./miner/Dockerfile
-          tags: ghcr.io/kumarabd/ingestion-plane/miner:latest
+          platforms: linux/arm64
+          tags: ghcr.io/kumarabd/ingestion-plane/miner:arm64
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -83,6 +92,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Packages
@@ -96,7 +107,8 @@ jobs:
         with:
           context: ./planner
           file: ./planner/Dockerfile
-          tags: ghcr.io/kumarabd/ingestion-plane/planner:latest
+          platforms: linux/arm64
+          tags: ghcr.io/kumarabd/ingestion-plane/planner:arm64
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -105,6 +117,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Login to GitHub Packages
@@ -118,7 +132,9 @@ jobs:
         with:
           context: ./sampler
           file: ./sampler/Dockerfile
-          tags: ghcr.io/kumarabd/ingestion-plane/sampler:latest
+          platforms: linux/arm64
+          tags: ghcr.io/kumarabd/ingestion-plane/sampler:arm64
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+

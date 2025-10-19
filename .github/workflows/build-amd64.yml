@@ -1,0 +1,139 @@
+# Workflow for building and deploying docker images to GitHub Packages
+name: Build and Deploy Docker Images
+
+on:
+  push:
+    branches: ["main"]
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push gateway image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./gateway
+          file: ./gateway/Dockerfile
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/kumarabd/ingestion-plane/gateway:latest
+            ghcr.io/kumarabd/ingestion-plane/gateway:amd64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  build-indexfeed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push indexfeed image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./indexfeed
+          file: ./indexfeed/Dockerfile
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/kumarabd/ingestion-plane/indexfeed:latest
+            ghcr.io/kumarabd/ingestion-plane/indexfeed:amd64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  build-miner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push miner image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./miner
+          file: ./miner/Dockerfile
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/kumarabd/ingestion-plane/miner:latest
+            ghcr.io/kumarabd/ingestion-plane/miner:amd64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  build-planner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push planner image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./planner
+          file: ./planner/Dockerfile
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/kumarabd/ingestion-plane/planner:latest
+            ghcr.io/kumarabd/ingestion-plane/planner:amd64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  build-sampler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push sampler image
+        uses: docker/build-push-action@v3
+        with:
+          context: ./sampler
+          file: ./sampler/Dockerfile
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/kumarabd/ingestion-plane/sampler:latest
+            ghcr.io/kumarabd/ingestion-plane/sampler:amd64
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
