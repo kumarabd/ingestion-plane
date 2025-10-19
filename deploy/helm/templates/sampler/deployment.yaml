@@ -25,7 +25,7 @@ spec:
       - name: sampler
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
-        image: "{{ .Values.global.imageRegistry }}/{{ .Values.sampler.image.repository }}:{{ .Values.sampler.image.tag }}"
+        image: "{{ .Values.sampler.image.repository }}:{{ .Values.sampler.image.tag }}"
         imagePullPolicy: {{ .Values.sampler.image.pullPolicy }}
         ports:
         - name: grpc

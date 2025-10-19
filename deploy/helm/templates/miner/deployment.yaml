@@ -25,7 +25,7 @@ spec:
       - name: miner
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
-        image: "{{ .Values.global.imageRegistry }}/{{ .Values.miner.image.repository }}:{{ .Values.miner.image.tag }}"
+        image: "{{ .Values.miner.image.repository }}:{{ .Values.miner.image.tag }}"
         imagePullPolicy: {{ .Values.miner.image.pullPolicy }}
         ports:
         - name: grpc
