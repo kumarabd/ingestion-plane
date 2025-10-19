@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package search.v1;
+
+option go_package = "github.com/kumarabd/ingestion-plane/contracts/search/v1;searchv1";
+
+import "google/protobuf/timestamp.proto";
+
+// Natural-language semantic query with optional filters.
+message SemanticQuery {
+  string query = 1;
+
+  // Optional label filters applied in vector/ANN stage (e.g., service, env).
+  map<string, string> label_filter = 2;
+
+  // Optional time range hint (for ranking / later LogQL windows).
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time   = 4;
+
+  // Number of template hits to return (default server-side).
+  uint32 top_k = 5;
+}
+
+// Template hit returned by semantic search (not raw logs).
+message TemplateHit {
+  string template_id = 1;
+  string template    = 2;
+  string regex       = 3;
+
+  // Metadata for filtering / UI.
+  map<string, string> labels = 4;
+
+  // Ranking score from ANN (higher is better).
+  float score = 5;
+
+  // Stats for context in the UI.
+  uint64 count_24h = 6;
+  google.protobuf.Timestamp ts_first = 7;
+  google.protobuf.Timestamp ts_last  = 8;
+}
+
+// Search response.
+message SearchResponse {
+  repeated TemplateHit hits = 1;
+}
+
+// Planner input to request LogQL for selected templates (optional extra API).
+message PlanRequest {
+  repeated TemplateHit selected = 1;
+
+  // Desired query time range.
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time   = 3;
+}
+
+// Planner returns candidate LogQL strings (the caller will run them against Loki).
+message PlanResponse {
+  repeated string logql_candidates = 1;
+}
+
+// Semantic Search & Planning APIs.
+service SearchService {
+  rpc Search (SemanticQuery) returns (SearchResponse);
+  rpc Plan   (PlanRequest)   returns (PlanResponse);
+}

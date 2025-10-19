@@ -1,0 +1,233 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "search/v1/search.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "SearchService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/search.v1.SearchService/Plan": {
+      "post": {
+        "operationId": "SearchService_Plan",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1PlanResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "Planner input to request LogQL for selected templates (optional extra API).",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1PlanRequest"
+            }
+          }
+        ],
+        "tags": [
+          "SearchService"
+        ]
+      }
+    },
+    "/search.v1.SearchService/Search": {
+      "post": {
+        "operationId": "SearchService_Search",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SearchResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "Natural-language semantic query with optional filters.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1SemanticQuery"
+            }
+          }
+        ],
+        "tags": [
+          "SearchService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1PlanRequest": {
+      "type": "object",
+      "properties": {
+        "selected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TemplateHit"
+          }
+        },
+        "startTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Desired query time range."
+        },
+        "endTime": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Planner input to request LogQL for selected templates (optional extra API)."
+    },
+    "v1PlanResponse": {
+      "type": "object",
+      "properties": {
+        "logqlCandidates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Planner returns candidate LogQL strings (the caller will run them against Loki)."
+    },
+    "v1SearchResponse": {
+      "type": "object",
+      "properties": {
+        "hits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TemplateHit"
+          }
+        }
+      },
+      "description": "Search response."
+    },
+    "v1SemanticQuery": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "labelFilter": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional label filters applied in vector/ANN stage (e.g., service, env)."
+        },
+        "startTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional time range hint (for ranking / later LogQL windows)."
+        },
+        "endTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "topK": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Number of template hits to return (default server-side)."
+        }
+      },
+      "description": "Natural-language semantic query with optional filters."
+    },
+    "v1TemplateHit": {
+      "type": "object",
+      "properties": {
+        "templateId": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        },
+        "regex": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Metadata for filtering / UI."
+        },
+        "score": {
+          "type": "number",
+          "format": "float",
+          "description": "Ranking score from ANN (higher is better)."
+        },
+        "count24h": {
+          "type": "string",
+          "format": "uint64",
+          "description": "Stats for context in the UI."
+        },
+        "tsFirst": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "tsLast": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Template hit returned by semantic search (not raw logs)."
+    }
+  }
+}

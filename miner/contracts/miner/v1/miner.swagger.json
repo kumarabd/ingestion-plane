@@ -1,0 +1,301 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "miner/v1/miner.proto",
+    "version": "version not set"
+  },
+  "tags": [
+    {
+      "name": "MinerService"
+    }
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/miner.v1.MinerService/Analyze": {
+      "post": {
+        "operationId": "MinerService_Analyze",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AnalyzeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1AnalyzeRequest"
+            }
+          }
+        ],
+        "tags": [
+          "MinerService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "commonv1Severity": {
+      "type": "string",
+      "enum": [
+        "SEVERITY_UNSPECIFIED",
+        "SEVERITY_DEBUG",
+        "SEVERITY_INFO",
+        "SEVERITY_WARN",
+        "SEVERITY_ERROR",
+        "SEVERITY_FATAL"
+      ],
+      "default": "SEVERITY_UNSPECIFIED",
+      "description": "Normalized severity. Keep mapping small; do not mirror every library level."
+    },
+    "minerv1Provenance": {
+      "type": "string",
+      "enum": [
+        "PROVENANCE_UNSPECIFIED",
+        "PROVENANCE_CACHE",
+        "PROVENANCE_HEURISTIC",
+        "PROVENANCE_LIBRELOG",
+        "PROVENANCE_FALLBACK"
+      ],
+      "default": "PROVENANCE_UNSPECIFIED",
+      "title": "- PROVENANCE_CACHE: found in template memory\n - PROVENANCE_HEURISTIC: grouping-tree / non-LLM heuristic\n - PROVENANCE_LIBRELOG: LibreLog / LLM-assisted synthesis\n - PROVENANCE_FALLBACK: masked-preview → regex fallback"
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1AnalyzeRequest": {
+      "type": "object",
+      "properties": {
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1NormalizedLog"
+          },
+          "description": "Normalized, PII-safe records from the gateway."
+        }
+      }
+    },
+    "v1AnalyzeResponse": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TemplateResult"
+          },
+          "description": "Authoritative, 1:1 with AnalyzeRequest.records via record_index."
+        },
+        "shadows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1MinerShadow"
+          },
+          "description": "Optional alternates for drift analysis / semantic pre-indexing."
+        }
+      }
+    },
+    "v1MinerShadow": {
+      "type": "object",
+      "properties": {
+        "recordIndex": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Index of the input record this shadow set refers to."
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TemplateResult"
+          },
+          "description": "Ranked alternate candidates (same shape as TemplateResult)."
+        }
+      },
+      "description": "Non-authoritative alternates considered for a given input record."
+    },
+    "v1NormalizedLog": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Canonical labels to keep cardinality sane; include tenant/service/env/severity."
+        },
+        "message": {
+          "type": "string",
+          "description": "Canonicalized, redacted message string (what miners see)."
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional structured fields promoted from json/logfmt (bounded, small)."
+        },
+        "schema": {
+          "$ref": "#/definitions/v1Schema",
+          "description": "Source schema classification for this line."
+        },
+        "severity": {
+          "$ref": "#/definitions/commonv1Severity",
+          "description": "Normalized severity (also present in labels)."
+        },
+        "sanitized": {
+          "type": "boolean",
+          "description": "True if UTF-8 fixups / sanitization occurred."
+        },
+        "originalLength": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Original payload length before truncation."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "Truncation flag applied during bounds enforcement."
+        },
+        "redaction": {
+          "$ref": "#/definitions/v1RedactionReport",
+          "description": "PII redaction report."
+        },
+        "correlationId": {
+          "type": "string",
+          "description": "Opaque correlation id for tracing across services (optional)."
+        }
+      },
+      "description": "Normalized log record emitted by the Pre-Normalizer + PII Redactor."
+    },
+    "v1RedactionReport": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "e.g., [\"pii.email\",\"pii.ipv4\"]"
+        },
+        "count": {
+          "type": "integer",
+          "format": "int64",
+          "title": "number of replacements performed"
+        }
+      },
+      "description": "Redaction metadata for auditing."
+    },
+    "v1Schema": {
+      "type": "string",
+      "enum": [
+        "SCHEMA_UNSPECIFIED",
+        "SCHEMA_JSON",
+        "SCHEMA_LOGFMT",
+        "SCHEMA_TEXT"
+      ],
+      "default": "SCHEMA_UNSPECIFIED",
+      "description": "Source schema of the incoming payload after detection."
+    },
+    "v1TemplateResult": {
+      "type": "object",
+      "properties": {
+        "recordIndex": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Index of the input record in AnalyzeRequest.records (explicit mapping)."
+        },
+        "templateId": {
+          "type": "string",
+          "description": "Stable identifier for the template (e.g., hash of canonical text)."
+        },
+        "template": {
+          "type": "string",
+          "description": "Canonical masked template text (post-PII)."
+        },
+        "regex": {
+          "type": "string",
+          "description": "Regex derived from placeholders; used by the planner to build LogQL."
+        },
+        "groupSignature": {
+          "type": "string",
+          "description": "Optional grouping signature / bucket id (token-type sequence, etc.)."
+        },
+        "confidence": {
+          "type": "number",
+          "format": "float",
+          "description": "Confidence (0..1) for this assignment."
+        },
+        "provenance": {
+          "$ref": "#/definitions/minerv1Provenance",
+          "description": "Provenance of this result (cache, heuristic, librelog, fallback)."
+        },
+        "firstSeen": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Template lifecycle hints (as known by the miner)."
+        },
+        "lastSeen": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Small, bounded exemplars for UI/analysis (already redacted)."
+        }
+      },
+      "description": "Canonical template assignment for a single input record."
+    }
+  }
+}

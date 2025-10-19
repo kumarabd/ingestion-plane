@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package miner.v1;
+
+option go_package = "github.com/kumarabd/ingestion-plane/contracts/miner/v1;minerv1";
+
+import "google/protobuf/timestamp.proto";
+import "ingest/v1/ingest.proto";
+
+// MinerService analyzes normalized, redacted logs and assigns canonical templates.
+// It returns one authoritative result per input record, plus optional alternate
+// candidates ("shadows") for drift analysis and semantic pre-indexing.
+
+service MinerService {
+  rpc Analyze (AnalyzeRequest) returns (AnalyzeResponse);
+}
+
+// ---------- Request ----------
+
+message AnalyzeRequest {
+  // Normalized, PII-safe records from the gateway.
+  repeated ingest.v1.NormalizedLog records = 1;
+}
+
+// ---------- Core types ----------
+
+enum Provenance {
+  PROVENANCE_UNSPECIFIED = 0;
+  PROVENANCE_CACHE       = 1; // found in template memory
+  PROVENANCE_HEURISTIC   = 2; // grouping-tree / non-LLM heuristic
+  PROVENANCE_LIBRELOG    = 3; // LibreLog / LLM-assisted synthesis
+  PROVENANCE_FALLBACK    = 4; // masked-preview → regex fallback
+}
+
+// Canonical template assignment for a single input record.
+message TemplateResult {
+  // Index of the input record in AnalyzeRequest.records (explicit mapping).
+  int32 record_index = 1;
+
+  // Stable identifier for the template (e.g., hash of canonical text).
+  string template_id = 2;
+
+  // Canonical masked template text (post-PII).
+  string template = 3;
+
+  // Regex derived from placeholders; used by the planner to build LogQL.
+  string regex = 4;
+
+  // Optional grouping signature / bucket id (token-type sequence, etc.).
+  string group_signature = 5;
+
+  // Confidence (0..1) for this assignment.
+  float confidence = 6;
+
+  // Provenance of this result (cache, heuristic, librelog, fallback).
+  Provenance provenance = 7;
+
+  // Template lifecycle hints (as known by the miner).
+  google.protobuf.Timestamp first_seen = 8;
+  google.protobuf.Timestamp last_seen  = 9;
+
+  // Small, bounded exemplars for UI/analysis (already redacted).
+  repeated string examples = 10;
+}
+
+// Non-authoritative alternates considered for a given input record.
+message MinerShadow {
+  // Index of the input record this shadow set refers to.
+  int32 record_index = 1;
+
+  // Ranked alternate candidates (same shape as TemplateResult).
+  repeated TemplateResult candidates = 2;
+}
+
+// ---------- Response ----------
+
+message AnalyzeResponse {
+  // Authoritative, 1:1 with AnalyzeRequest.records via record_index.
+  repeated TemplateResult results = 1;
+
+  // Optional alternates for drift analysis / semantic pre-indexing.
+  repeated MinerShadow shadows = 2;
+}
