@@ -9,11 +9,12 @@ The Ingestion Plane is a microservices-based architecture designed to optimize l
 ### Key Features
 
 - **Dual Storage Strategy**: Separate raw (compliance) and processed (analysis) Loki instances
-- **Multi-Protocol Ingestion**: OTLP, Loki Push API, and JSON endpoints
+- **Multi-Protocol Ingestion**: OTLP, Loki Push API, and JSON endpoints with dual publishing
 - **Online Template Mining**: Real-time pattern discovery using Drain3 algorithm
 - **Smart Sampling**: Intelligent keep/suppress decisions preserving signal while reducing noise
 - **Semantic Search**: Natural language queries over log patterns via vector embeddings
 - **Cost Optimization**: Significant reduction in storage and ingestion costs
+- **Complete Audit Trail**: All raw logs preserved for compliance and debugging
 
 ## Architecture
 
@@ -27,6 +28,22 @@ The Ingestion Plane is a microservices-based architecture designed to optimize l
 ┌─────────────────────────────────────────────────────────────┐
 │                   GATEWAY (Go:8001)                          │
 │  Multi-Protocol → Normalize → Pipeline Orchestration        │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              INGESTION LAYER                         │   │
+│  │  /loki/api/v1/push  /v1/ingest/json  /v1/ingest/otlp │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │   │
+│  │  │   Loki API  │  │   JSON API  │  │   OTLP API  │   │   │
+│  │  │             │  │             │  │             │   │   │
+│  │  │ Raw → Loki  │  │ Raw → Loki  │  │ Raw → Loki  │   │   │
+│  │  │ Raw → Proc  │  │ Raw → Proc  │  │ Raw → Proc  │   │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘   │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              PROCESSING PIPELINE                     │   │
+│  │  Raw Logs → Normalize → Mine → Sample → Index       │   │
+│  └─────────────────────────────────────────────────────┘   │
 └──┬─────────┬─────────┬─────────┬─────────┬─────────────────┘
    │         │         │         │         │
    │         ▼         ▼         ▼         │
@@ -35,6 +52,8 @@ The Ingestion Plane is a microservices-based architecture designed to optimize l
    │    │:50051  │ │:50060  │ │ FEED   │  │
    │    │Python  │ │  Go    │ │:50070  │  │
    │    │Drain3  │ │Decision│ │  Go    │  │
+   │    │Pattern │ │Keep/   │ │Vector  │  │
+   │    │Mining  │ │Suppress│ │Search  │  │
    │    └────────┘ └────────┘ └────────┘  │
    │         │         │         │         │
    │         └─────────┴─────────┘         │
@@ -54,8 +73,16 @@ The Ingestion Plane is a microservices-based architecture designed to optimize l
         │  :3101   │        │(Processed│
         │ 7-day    │        │  :3100   │
         │ Raw Logs │        │ 30-day   │
-        └──────────┘        │ Sampled  │
-                            └──────────┘
+        │Complete  │        │ Sampled  │
+        │Unmodified│        │Enriched  │
+        └──────────┘        └──────────┘
+              │                   │
+              ▼                   ▼
+        ┌──────────┐        ┌──────────┐
+        │Compliance│        │Analytics │
+        │Debugging │        │Dashboards│
+        │Audit     │        │Search    │
+        └──────────┘        └──────────┘
 ```
 
 ## Components
@@ -65,11 +92,11 @@ The Ingestion Plane is a microservices-based architecture designed to optimize l
 **Purpose:** Primary ingestion point and pipeline orchestrator
 
 **Features:**
-- Multi-protocol ingestion (OTLP, Loki API, JSON)
-- Raw log forwarding to Loki-Raw (zero modifications)
-- Pipeline orchestration (Miner → Sampler → IndexFeed)
-- Dual Loki sink management
-- PII redaction and normalization
+- **Multi-Protocol Ingestion**: OTLP, Loki API, JSON endpoints
+- **Dual Log Publishing**: All protocols send raw logs to Loki-Raw + processed logs to Loki
+- **Pipeline Orchestration**: Raw → Normalize → Mine → Sample → Index
+- **PII Redaction**: Automatic sensitive data masking
+- **Dual Loki Management**: Separate raw (compliance) and processed (analytics) storage
 
 [📖 Detailed Documentation](docs/_docs/reference/gateway-service.md)
 
@@ -129,15 +156,17 @@ The Ingestion Plane is a microservices-based architecture designed to optimize l
 
 ### Loki-Raw (Port 3101)
 - **Retention:** 7 days
-- **Content:** Complete, unmodified logs (Loki API only)
-- **Labels:** `type="raw"`
-- **Use Cases:** Compliance, debugging, historical reconstruction
+- **Content:** Complete, unmodified logs from ALL protocols
+- **Labels:** `type="raw"`, `gateway="true"`, plus original labels
+- **Protocols:** Loki API, JSON API, OTLP API
+- **Use Cases:** Compliance, debugging, historical reconstruction, audit trails
 
 ### Loki (Processed) (Port 3100)
 - **Retention:** 30 days
 - **Content:** Sampled, enriched logs (60-90% reduction)
 - **Labels:** `type="processed"`, `gateway="true"`, plus template metadata
-- **Use Cases:** Production queries, dashboards, semantic search
+- **Processing:** PII redaction, normalization, template mining, smart sampling
+- **Use Cases:** Production queries, dashboards, semantic search, analytics
 
 ## Quick Start
 
@@ -184,20 +213,21 @@ cd ../gateway && ./gateway -config config-local.yaml  # Terminal 4
 ### Test Ingestion
 
 ```bash
-# Test JSON API
-curl -X POST http://localhost:8001/api/v1/logs \
+# Test JSON API (sends to both raw and processed)
+curl -X POST http://localhost:8001/v1/ingest/json \
   -H "Content-Type: application/json" \
   -d '{
     "records": [
       {
         "timestamp": "2024-01-01T00:00:00Z",
         "labels": {"service": "api", "env": "dev", "severity": "info"},
-        "payload": "User 12345 logged in successfully"
+        "payload": "User 12345 logged in successfully",
+        "format_hint": "text"
       }
     ]
   }'
 
-# Test Loki API (forwards to both raw and processed)
+# Test Loki API (sends to both raw and processed)
 curl -X POST http://localhost:8001/loki/api/v1/push \
   -H "Content-Type: application/json" \
   -d '{
@@ -210,6 +240,12 @@ curl -X POST http://localhost:8001/loki/api/v1/push \
       }
     ]
   }'
+
+# Verify raw logs (Loki-Raw)
+curl -s 'http://localhost:3101/loki/api/v1/query?query={service="api"}' | jq
+
+# Verify processed logs (Loki)
+curl -s 'http://localhost:3100/loki/api/v1/query?query={service="api"}' | jq
 
 # Check Grafana
 open http://localhost:3000
